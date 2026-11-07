@@ -1,0 +1,20 @@
+{
+    "id": "rk",
+    "name": "Radio-86RK family",
+    "build": "00000000",
+    "visible": true,
+    "type": "osd",
+    "order": 16,
+    "eeprom_bank": 255,
+    "roms": [
+    ],
+    "boards": {
+        "minig": {"bitstream": "karabas_minig.bin"}
+    },
+    "osd": [
+    {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka", "dir": "/rk", "hotkey": "Menu+F2"},
+    {"type": "-"},
+    {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Mikro-80"], "default": 0, "hotkey": "Menu+M"},
+    {"type": "T", "name": "Reset", "hotkey": "F12"}
+    ]
+}
