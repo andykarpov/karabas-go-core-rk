@@ -1,0 +1,7 @@
+verilog work "rtl/vm80a/vm80a.v"
+verilog work "rtl/apogee/k580vt57.v"
+verilog work "rtl/apogee/k580vg75.v"
+verilog work "rtl/rk/rk_sram.v"
+verilog work "rtl/rk/rk_ppi.v"
+verilog work "rtl/rk/rk_cpu.v"
+verilog work "rtl/rk/rk_system.v"
