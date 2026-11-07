@@ -7,6 +7,8 @@
     "order": 16,
     "eeprom_bank": 255,
     "roms": [
+    {"filename": "roms/rk86.rom", "address": 1048576},
+    {"filename": "roms/sgr.bin", "address": 2031616}
     ],
     "boards": {
         "minig": {"bitstream": "karabas_minig.bin"}
@@ -14,7 +16,7 @@
     "osd": [
     {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka", "dir": "/rk", "hotkey": "Menu+F2"},
     {"type": "-"},
-    {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Mikro-80"], "default": 0, "hotkey": "Menu+M"},
+    {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80"], "default": 0, "hotkey": "Menu+M"},
     {"type": "T", "name": "Reset", "hotkey": "F12"}
     ]
 }
