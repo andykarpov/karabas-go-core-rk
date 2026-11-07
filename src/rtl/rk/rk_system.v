@@ -5,8 +5,8 @@
  rk_system.v
 
  The Radio-86RK family on one clock of 40 MHz: the processor, the memory map, the ports, the VG75 CRT
- controller with its DMA, the frame buffer and the SRAM. docs/HARDWARE.md has the maps. Phase 0: the
- Radio-86RK without keyboard and video output (the frame buffer is written; rk_video in phase 1).
+ controller with its DMA, the frame buffer, the video output and the SRAM. docs/HARDWARE.md has the maps.
+ Phase 1: the Radio-86RK.
 
  The VG75 (k580vg75) and the VT57 (k580vt57) come from Apogee_MiSTer and run at the native timing: the
  points at 8 MHz (40 / 5), the DMA on the F2 enable of the CPU, which it holds (HOLD / HLDA) while it reads
@@ -27,33 +27,44 @@
 
  After reset the Monitor answers every read (its first bytes are a jump to F836), until the first read
  at 8000-FFFF, as the startup flip-flop of Apogee_MiSTer.
+
+ A tape file starts as Emu80 runs it: after the load the machine leaves reset, its Monitor runs for
+ 200 ms (it sets up the PPI, the VG75 and its variables), then the next opcode fetch reads JMP start
+ instead of the memory (autorun; core-specialist does the same).
 */
 
 module rk_system (
 	input wire clk,
 	input wire reset,
 	input wire turbo,
+	input wire color,
+	input wire autorun,
 
 	// the ROM loader of the mcu
 	input wire rom_active,
 	input wire [21:0] rom_addr,
 	input wire [7:0] rom_data,
 	input wire rom_wr,
+	input wire file_active,
+	input wire [7:0] file_slot,
+	input wire [31:0] file_addr,
+	input wire [7:0] file_data,
+	input wire file_wr,
 
-	// the keyboard PPI (8000): A the columns out, B the rows in, C high the shift keys in
-	output wire [7:0] kb_pa_o,
-	input wire [7:0] kb_pb_i,
-	input wire [2:0] kb_pc_i,     // PC7 RUS/LAT, PC6 US, PC5 SS: 0 = pressed
+	// the keyboard (rk_kbd on the keyboard PPI at 8000)
+	input wire [7:0] kb_scancode,
+	input wire kb_scancode_upd,
+	input wire [12:0] joy,
 	input wire tape_in,           // PC4
 
 	output wire beep,             // INTE of the CPU
 	output wire tape_out,         // PC0
 
-	// the video port of rk_sram (rk_video)
-	input wire vid_req,
-	input wire [20:0] vid_addr,
-	output wire [15:0] vid_dout,
-	output wire vid_valid,
+	// 800 x 600 at 60 Hz (rk_video)
+	output wire [23:0] rgb,
+	output wire hs,
+	output wire vs,
+	output wire de,
 
 	output wire [20:0] MA,
 	inout wire [15:0] MD,
@@ -62,7 +73,7 @@ module rk_system (
 
 localparam [21:0] FB_BASE = 22'h300000;
 
-wire run_reset = reset | rom_active;
+wire run_reset = reset | rom_active | file_active;
 
 // ------------------------------------------------------------------ the CPU
 wire [15:0] a;
@@ -117,11 +128,20 @@ wire sel_ram = !a[15];
 // ------------------------------------------------------------------ the PPIs
 wire [7:0] ppi1_do, ppi2_do, ppi1_pc;
 
+wire [7:0] kb_scan, kb_ret;
+wire [3:0] kb_pc_hi;
+
 rk_ppi ppi1 (
 	.clk(clk), .reset(run_reset), .a(a[1:0]), .wr(wr_p & sel_ppi1), .din(cpu_do), .dout(ppi1_do),
-	.pa_i(8'hFF), .pb_i(kb_pb_i), .pc_i({ kb_pc_i, tape_in, 4'hF }),
+	.pa_i(8'hFF), .pb_i(kb_ret), .pc_i({ kb_pc_hi[3:1], tape_in, 4'hF }),
 	.pa_in(), .pb_in(), .pcl_in(),
-	.pa_o(kb_pa_o), .pb_o(), .pc_o(ppi1_pc)
+	.pa_o(kb_scan), .pb_o(), .pc_o(ppi1_pc)
+);
+
+rk_kbd kbd (
+	.clk(clk), .reset(reset), .ms7007(1'b0),
+	.scancode(kb_scancode), .scancode_upd(kb_scancode_upd), .joy(joy),
+	.scan(kb_scan), .ret(kb_ret), .pc_hi(kb_pc_hi)
 );
 assign tape_out = ppi1_pc[0];
 
@@ -252,36 +272,104 @@ wire [21:0] mon_off = 22'h100000 | { 11'd0, a[10:0] };   // 100000 + (a - F800),
 wire [21:0] sram_addr = hlda ? { 6'd0, dma_addr } : sel_rom ? mon_off : { 6'd0, a };
 wire sram_we = mem_wr && sel_ram && !hlda;
 
+// ------------------------------------------------------------------ autorun of a tape file
+wire [15:0] rk_start;
+wire rk_ok;
+reg file_d = 1'b0, rd_d = 1'b0;
+reg [22:0] run_wait = 23'd0;   // 200 ms of the Monitor
+reg run_pend = 1'b0, run_arm = 1'b0;
+reg [1:0] inj = 2'd0;          // 1 the opcode, 2 / 3 the address bytes
+wire rd_end = rd_d & ~mem_rd;
+always @(posedge clk) begin
+	file_d <= file_active;
+	rd_d <= mem_rd;
+	if (reset) begin
+		run_pend <= 1'b0;
+		run_arm <= 1'b0;
+		inj <= 2'd0;
+	end
+	else if (file_d && !file_active) begin
+		run_pend <= autorun && rk_ok && file_slot == 8'd1;
+		run_arm <= 1'b0;
+		inj <= 2'd0;
+		run_wait <= 23'd7999999;
+	end
+	else if (run_pend) begin
+		if (run_wait == 23'd0) begin
+			run_pend <= 1'b0;
+			run_arm <= 1'b1;
+		end
+		else
+			run_wait <= run_wait - 23'd1;
+	end
+	else if (run_arm && mem_rd && fetch) begin
+		run_arm <= 1'b0;
+		inj <= 2'd1;
+	end
+	else if (inj != 2'd0 && rd_end)
+		inj <= inj == 2'd3 ? 2'd0 : inj + 2'd1;
+end
+
 always @* begin
 	cpu_di = 8'hFF;
-	if (sel_rom) cpu_di = sram_do;
+	if (inj == 2'd1) cpu_di = 8'hC3;
+	else if (inj == 2'd2) cpu_di = rk_start[7:0];
+	else if (inj == 2'd3) cpu_di = rk_start[15:8];
+	else if (sel_rom) cpu_di = sram_do;
 	else if (sel_ram) cpu_di = sram_do;
 	else if (sel_ppi1) cpu_di = ppi1_do;
 	else if (sel_ppi2) cpu_di = ppi2_do;
 	else if (sel_crt) cpu_di = crt_do;
 end
 
-// the aux port of the SRAM: the ROM loader, else the frame buffer
-reg ld_req = 1'b0;
-reg [21:0] ld_addr = 22'd0;
-reg [7:0] ld_din = 8'd0;
-wire aux_ack;
+// the aux port of the SRAM: the loaders, else the frame buffer
+wire ld_req, aux_ack;
+wire [21:0] ld_addr;
+wire [7:0] ld_din;
 reg own_fb = 1'b0;
-always @(posedge clk) begin
-	if (rom_wr) begin
-		ld_req <= 1'b1;
-		ld_addr <= rom_addr;
-		ld_din <= rom_data;
-	end
-	else if (aux_ack && !own_fb)
-		ld_req <= 1'b0;
+always @(posedge clk)
 	if (aux_ack)
 		own_fb <= 1'b0;
 	else if (!ld_req && fb_pend)
 		own_fb <= 1'b1;
-end
 assign fb_ack = aux_ack && own_fb;
 wire aux_req = own_fb ? fb_pend : ld_req;
+
+rk_loader loader (
+	.clk(clk),
+	.rom_active(rom_active),
+	.rom_addr(rom_addr),
+	.rom_data(rom_data),
+	.rom_wr(rom_wr),
+	.file_active(file_active),
+	.file_slot(file_slot),
+	.file_addr(file_addr),
+	.file_data(file_data),
+	.file_wr(file_wr),
+	.rk_start(rk_start),
+	.rk_ok(rk_ok),
+	.aux_req(ld_req),
+	.aux_addr(ld_addr),
+	.aux_din(ld_din),
+	.aux_ack(aux_ack && !own_fb)
+);
+
+wire vid_req, vid_valid;
+wire [20:0] vid_addr;
+wire [15:0] vid_dout;
+
+rk_video video (
+	.clk(clk),
+	.color(color),
+	.vid_req(vid_req),
+	.vid_addr(vid_addr),
+	.vid_dout(vid_dout),
+	.vid_valid(vid_valid),
+	.rgb(rgb),
+	.hs(hs),
+	.vs(vs),
+	.de(de)
+);
 
 rk_sram sram (
 	.clk(clk),
