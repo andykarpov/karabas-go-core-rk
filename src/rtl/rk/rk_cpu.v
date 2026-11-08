@@ -13,7 +13,9 @@
 
  hold / hlda are the HOLD / HLDA pins: the DMA of the VG75 takes the bus between the cycles of the CPU.
  ready (the READY pin) stops the CPU for a slow device. fetch: the status word of the cycle (D5, M1)
- says that it fetches an opcode; it holds until the next SYNC. Change fast and turbo at any time: they
+ says that it fetches an opcode; it holds until the next SYNC. io: the cycle is an IN or OUT (D6, D4 of
+ the status; the 8080 shows them as a read or a write of { n, n }), stack: a cycle of the stack (D2;
+ the RAM disk of the Mikro-80 takes them). Change fast and turbo at any time: they
  take effect at the start of the next state.
 */
 
@@ -32,6 +34,8 @@ module rk_cpu (
 	output wire mem_rd,
 	output wire mem_wr,
 	output reg fetch = 1'b0,
+	output reg io = 1'b0,
+	output reg stack = 1'b0,
 	output wire inte,
 	output reg ce_f2 = 1'b0
 );
@@ -78,8 +82,11 @@ vm80a_core cpu80 (
 );
 
 always @(posedge clk)
-	if (sync)
+	if (sync) begin
 		fetch <= dout[5];
+		io <= dout[6] | dout[4];
+		stack <= dout[2];
+	end
 
 assign mem_rd = dbin;
 assign mem_wr = ~wr_n;

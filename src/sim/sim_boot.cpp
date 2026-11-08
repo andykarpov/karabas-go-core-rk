@@ -159,8 +159,8 @@ int main(int argc, char **argv) {
 			sum = sum * 31 + b;
 			lit += ((b >> 3) & 1) + ((b >> 7) & 1);
 		}
-	static const char *names[] = { "RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80" };
-	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model % 5], turbo ? "turbo" : "1.78MHz", ms, beeps, snds, sum, lit);
+	static const char *names[] = { "RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80", "Mikro-80RK", "?", "?" };
+	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model & 7], turbo ? "turbo" : model >= 4 ? "2MHz" : "1.78MHz", ms, beeps, snds, sum, lit);
 	for (auto &d : dumps) {
 		for (int i = 0; i < d.second; i++) { if (i % 32 == 0) printf("\n%06x:", d.first + i); printf(" %02x", peek(d.first + i)); }
 		printf("\n");

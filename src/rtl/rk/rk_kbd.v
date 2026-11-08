@@ -27,6 +27,10 @@
  the RK86 table is column r, bit c here (the digits, the letters, the punctuation); rows 0 and 1 hold
  the other keys in another order, and column 7 bit 7 is Backspace (Space is column 0 bit 0). Port C:
  { SS (Shift), US (Ctrl), RUS/LAT, 1 }.
+
+ mikro80 (karabas): the keyboard of the Mikro-80 (Emu80 m_keyMatrixMikro80): scan on port A, ret on port
+ B as the RK86, its own order of the keys in 7 bits (bit 7 always reads 0, as Emu80), and RUS/LAT, US,
+ SS on PC0..PC2 (pc_lo, active low).
 */
 
 module rk_kbd (
@@ -34,12 +38,14 @@ module rk_kbd (
 	input wire reset,
 	input wire ms7007,
 	input wire mikrosha,
+	input wire mikro80,
 	input wire [7:0] scancode,
 	input wire scancode_upd,    // toggles with each byte
 	input wire [12:0] joy,      // the joysticks of kg_mcu (both, or-ed): up, down, left, right, start, A, B in bits 1..7
 	input wire [7:0] scan,
 	output wire [7:0] ret,
-	output wire [3:0] pc_hi
+	output wire [3:0] pc_hi,
+	output wire [3:0] pc_lo
 );
 
 reg upd_d = 1'b0;
@@ -351,6 +357,24 @@ wire [7:0] ret_mk = ~( (scan[0] ? 8'd0 : mcol(3'd0)) | (scan[1] ? 8'd0 : mcol(3'
                        (scan[6] ? 8'd0 : mcol(3'd6)) | (scan[7] ? 8'd0 : mcol(3'd7)) );
 wire rk_ss = ~(rk_force ? rk_sh : ss);
 
+// the Mikro-80: scan i, bit j (0..6) is the key at km place M80_i[j]
+localparam [41:0] M80_0 = { 6'o66, 6'o65, 6'o64, 6'o63, 6'o62, 6'o61, 6'o60 };
+localparam [41:0] M80_1 = { 6'o55, 6'o54, 6'o53, 6'o52, 6'o51, 6'o50, 6'o67 };
+localparam [41:0] M80_2 = { 6'o44, 6'o43, 6'o42, 6'o41, 6'o40, 6'o57, 6'o56 };
+localparam [41:0] M80_3 = { 6'o33, 6'o32, 6'o31, 6'o30, 6'o47, 6'o46, 6'o45 };
+localparam [41:0] M80_4 = { 6'o22, 6'o21, 6'o20, 6'o37, 6'o36, 6'o35, 6'o34 };
+localparam [41:0] M80_5 = { 6'o11, 6'o10, 6'o27, 6'o26, 6'o25, 6'o24, 6'o23 };
+localparam [41:0] M80_6 = { 6'o17, 6'o73, 6'o16, 6'o15, 6'o14, 6'o13, 6'o12 };
+localparam [41:0] M80_7 = { 6'o00, 6'o01, 6'o72, 6'o77, 6'o75, 6'o74, 6'o76 };
+function [6:0] m80c;
+	input [41:0] t;
+	m80c = { kj[t[36 +: 6]], kj[t[30 +: 6]], kj[t[24 +: 6]], kj[t[18 +: 6]], kj[t[12 +: 6]], kj[t[6 +: 6]], kj[t[0 +: 6]] };
+endfunction
+wire [6:0] ret_m80 = ~( (scan[0] ? 7'd0 : m80c(M80_0)) | (scan[1] ? 7'd0 : m80c(M80_1)) |
+                        (scan[2] ? 7'd0 : m80c(M80_2)) | (scan[3] ? 7'd0 : m80c(M80_3)) |
+                        (scan[4] ? 7'd0 : m80c(M80_4)) | (scan[5] ? 7'd0 : m80c(M80_5)) |
+                        (scan[6] ? 7'd0 : m80c(M80_6)) | (scan[7] ? 7'd0 : m80c(M80_7)) );
+
 // MS7007: a column read gives its rows 0..11; the Orion shift is (5, 9)
 function [11:0] mc;
 	input [2:0] c;
@@ -363,7 +387,8 @@ wire [11:0] ret_ms = ~( (scan[0] ? 12'd0 : mc(3'd0)) | (scan[1] ? 12'd0 : mc(3'd
                         (scan[4] ? 12'd0 : mc(3'd4)) | (scan[5] ? 12'd0 : mc(3'd5)) |
                         (scan[6] ? 12'd0 : mc(3'd6)) | (scan[7] ? 12'd0 : mc(3'd7)) );
 
-assign ret = ms7007 ? ret_ms[7:0] : mikrosha ? ret_mk : ret_rk;
+assign ret = ms7007 ? ret_ms[7:0] : mikrosha ? ret_mk : mikro80 ? { 1'b0, ret_m80 } : ret_rk;
+assign pc_lo = { 1'b1, rk_ss, ~us, ~rl };
 assign pc_hi = ms7007 ? ret_ms[11:8] : mikrosha ? { rk_ss, ~us, ~rl, 1'b1 } : { ~rl, ~us, rk_ss, 1'b1 };
 
 endmodule
