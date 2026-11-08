@@ -18,7 +18,7 @@ old [karabas-go-core-rk86](https://github.com/andykarpov/karabas-go-core-rk86).
 
 The core file is `src/rk.kg`.
 
-**State:** build 26110806. The Radio-86RK (with SDOS), the Mikrosha, the Apogey, the Partner 01.01 and
+**State:** build 26110807. The Radio-86RK (with SDOS), the Mikrosha, the Apogey, the Partner 01.01 and
 the Mikro-80 run on the Mini G; the Go and the Mini are built, not tried on a board yet (see
 [What is tested](#what-is-tested)). The plan and the next options are in
 [docs/PLAN.md](docs/PLAN.md) (Russian).
@@ -166,8 +166,8 @@ Apogey; Mono gives the picture of a black and white TV. Programs: `.rka` files, 
 
 **ROM disk:** choose `APOGEY.ROM` as ROM disk (Menu+F3), then type `R,C` Enter and `G` Enter: the
 shell of the ROM disk shows its sections (graphic games, demos, games, music, programming,
-utilities); the arrows choose, Enter starts. The firmware does not load the ROM disk again at the
-next start of the core: choose it once more then.
+utilities); the arrows choose, Enter starts. The chosen ROM disk is loaded again at every start of
+the core.
 
 ### Partner 01.01
 
@@ -275,8 +275,6 @@ On the Mini G with an HDMI capture (picture and sound):
   Monitors set is smaller than the frame buffer window. Centring is in the backlog.
 - The Mikro-80 shows rows of 9 lines (8 + 1 dark) instead of 10, so that its 32 rows fit the frame
   buffer: the gaps between pseudo-graphic rows are one line thinner.
-- The letter of a Menu+letter hotkey also reaches the machine (a firmware matter): after Menu+M the
-  Monitor shows an `M`. Press Enter before typing.
 
 ## Building
 
