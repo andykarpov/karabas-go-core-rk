@@ -191,7 +191,8 @@ Two models, two Monitors:
 
 **ROM disk:** Model = Mikro-80RK, ROM disk = `MIKRO80.ROM`, then `R7E00,7FFF` Enter and `G` Enter:
 `*ROM-DISK/32K*` lists BASIC, BASIC2, TETRIS and CP/M; the arrows choose, Enter starts. The **RAM
-disk** (8 × 64 KB) is the disk of CP/M; it keeps its contents until the board is switched off.
+disk** (8 × 64 KB) is the disk of CP/M; it keeps its contents until the board is switched off. At
+the start of CP/M choose 2 for a new empty disk, 3 to keep the current one.
 
 The Mikro-80 has no sound of its own: what it plays goes to the tape output, and the core sends that
 to HDMI and the DAC.
@@ -259,14 +260,15 @@ On the Mini G with an HDMI capture (picture and sound):
 |---|---|
 | Radio-86RK: Monitor, keyboard (a dump of the ROM), `.rk` games with Autorun | yes |
 | SDOS: `GE000`, `DIR`, `CD`, a program from the SD card, the RK86 back after the image is ejected | yes |
-| SDOS: writing to the image | not yet |
+| SDOS adapter: a block written by a test program reaches the image file | yes |
 | Mikrosha: Monitor, keyboard | yes |
 | Apogey: Monitor, keyboard, ROM disk shell in colour, a graphic game, music on the 8253 | yes |
 | Mikro-80, Mikro-80RK: Monitors, keyboard, ROM disk shell, Tetris | yes |
 | A change of the model on the fly | yes |
-| Mikro-80 RAM disk | simulation only |
+| Mikro-80 RAM disk: CP/M `SAVE`, `DIR`, the file is there after a reset | yes |
 | Partner: Monitor, BASIC, keyboard, `.rkp` games (XONIX), MCPG colour games and their music (PACMAN, MARS2) | yes |
-| Mikrosha `.rkm` programs and their sound | not yet |
+| Mikrosha: a test `.rkm` starts by itself, a 1 kHz tone on the 8253 | yes |
+| Mikrosha: real `.rkm` programs (none in the Emu80 distribution) | not yet |
 | Tape | not yet |
 | Go, Mini | built, not tried yet |
 
