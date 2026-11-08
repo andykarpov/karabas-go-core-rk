@@ -25,7 +25,7 @@
 
  The frame buffer: the points of the VG75 (point, highlight, the two colour bits of the Apogey: 4 bits)
  in a window of 512 x 300 from the first active point of the first active line (the hblank / vblank of
- the VG75), two points a byte (the first in the low nibble), 256 bytes a line, in the SRAM at FB_BASE.
+ the VG75; the retraces inside the window are written black), two points a byte (the first in the low nibble), 256 bytes a line, in the SRAM at FB_BASE.
  rk_video reads it as 16-bit words of four points.
 
  SRAM (a byte address of 22 bits, rk_sram):
@@ -279,6 +279,7 @@ end
 
 k580vg75 crt (
 	.clk_sys(clk),
+	.reset(run_reset),
 	.ce_pix(ce_pix),
 	.iaddr(a[0]),
 	.idata(hlda ? sram_do : cpu_do),
@@ -326,19 +327,21 @@ always @(posedge clk) begin
 	if (ce_pix) begin
 		hb_d <= hblank;
 		vb_d <= vblank;
+		// the whole window every frame: the points out of the raster of the VG75 (its retraces) are
+		// black, so a smaller raster (another model, other parameters) leaves nothing of the old one
 		if (vb_d && !vblank)
 			fy <= 9'd0;
-		else if (!hb_d && hblank && !vblank)
+		else if (!hb_d && hblank && fy != 9'd511)
 			fy <= fy + 9'd1;
 		if (hb_d && !hblank)
 			fx <= 10'd0;
-		else if (act)
+		else if (fx != 10'd1023)
 			fx <= fx + 10'd1;
-		if (act && fx < 10'd512 && fy < 9'd300) begin
+		if (fx < 10'd512 && fy < 9'd300) begin
 			if (!fx[0])
-				lo_nib <= { pix, hilight, gattr };
+				lo_nib <= act ? { pix, hilight, gattr } : 4'd0;
 			else begin
-				fq[fq_wp] <= { fy, fx[8:1], pix, hilight, gattr, lo_nib };
+				fq[fq_wp] <= { fy, fx[8:1], act ? { pix, hilight, gattr } : 4'd0, lo_nib };
 				fq_push <= 1'b1;
 			end
 		end

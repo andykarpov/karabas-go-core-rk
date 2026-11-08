@@ -9,7 +9,10 @@
 #     later; with --noauto it loads but does not start.
 #  5. the Mikrosha and the Apogey: their Monitors start, the keys of 3 change the screen, a tape file
 #     starts by itself.
-#  6. FULL=1: the ROM disk of the Apogey (Emu80 romdisk512.bin, ROMDISK=FILE) loads by FL slot 2 and
+#  6. a change of the model on the fly (the RK86, then the Mikrosha at 317 ms): the same screen as the
+#     Mikrosha from power on (the VG75 is reset with the machine); the RK86 after the dump of 3, then the
+#     Apogey: the same screen as the Apogey from power on (nothing of the old frame stays).
+#  7. FULL=1: the ROM disk of the Apogey (Emu80 romdisk512.bin, ROMDISK=FILE) loads by FL slot 2 and
 #     R,C + G starts its shell (2.5 minutes).
 set -eu
 H=$(cd "$(dirname "$0")" && pwd)
@@ -46,6 +49,14 @@ for m in 1 2; do
 	cmp -s "$B/m$m.ppm" "$B/m${m}_key.ppm" && { echo "model $m: the keys changed nothing"; err=1; }
 	"$SIM" $ROMS --model $m --ms 1200 --file 500:1:"$B/t.rk" --expect 0x1000:0x5A || err=1
 done
+"$SIM" $ROMS --switch 317:1 --ms 1500 --ppm "$B/switch.ppm" || err=1
+"$SIM" $ROMS --model 1 --ms 1500 --ppm "$B/m1_cold.ppm" || err=1
+cmp -s "$B/switch.ppm" "$B/m1_cold.ppm" || { echo "a change of the model gives another screen"; err=1; }
+"$SIM" $ROMS --ms 6700 $(keys 600 23 2B 3E 45 45 41 2B 3E 16 2B 5A) --switch 5200:2 --ppm "$B/switch2.ppm" || err=1
+"$SIM" $ROMS --model 2 --ms 1500 --ppm "$B/m2_cold.ppm" || err=1
+# the cursor may blink in another phase: up to one cursor (6 points of a line) may differ
+python3 -c "import sys; a, b = (open(f, 'rb').read() for f in sys.argv[1:]); sys.exit(sum(x != y for x, y in zip(a, b)) > 18)" \
+	"$B/switch2.ppm" "$B/m2_cold.ppm" || { echo "the RK86 screen stays under the Apogey"; err=1; }
 if [ -n "${FULL:-}" ]; then
 	RD=${ROMDISK:-$HOME/emu80v4/dist/apogey/romdisk512.bin}
 	"$SIM" $ROMS --model 2 --color --ms 6000 --file 100:2:"$RD" $(keys 1500 2D 41 21 5A 34 5A) --ppm "$B/romdisk.ppm" \

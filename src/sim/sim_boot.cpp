@@ -9,7 +9,8 @@
 // writes the frame buffer (512 x 300, 4 bits a point at 300000 of the SRAM) as an image; --frame
 // captures the next whole frame of the video output (800 x 600). --expect checks a byte of the SRAM (a
 // byte address of rk_sram) at the end; --dump prints bytes of the SRAM. TRACE=N prints N CPU reads.
-// --model: 0 the RK86, 1 the Mikrosha, 2 the Apogey. "sound edges" counts the changes of the audio.
+// --model: 0 the RK86, 1 the Mikrosha, 2 the Apogey; --switch MS:N changes it at that time under a reset of
+// 255 clocks, as the top does. "sound edges" counts the changes of the audio.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -78,6 +79,10 @@ int main(int argc, char **argv) {
 			evs.push_back(e);
 		}
 		else if (!strcmp(argv[i], "--model")) model = atoi(argv[++i]);
+		else if (!strcmp(argv[i], "--switch")) {
+			std::string s = argv[++i];
+			evs.push_back({ strtoull(s.c_str(), nullptr, 0) * 40000, 2, atoi(s.c_str() + s.find(':') + 1), "", {} });
+		}
 		else if (!strcmp(argv[i], "--turbo")) turbo = true;
 		else if (!strcmp(argv[i], "--color")) color = true;
 		else if (!strcmp(argv[i], "--noauto")) autorun = false;
@@ -119,6 +124,11 @@ int main(int argc, char **argv) {
 				}
 				for (int i = 0; i < 40; i++) tick();
 				top->file_active = 0;
+			}
+			else if (e.kind == 2) {
+				top->model = e.slot; model = e.slot; top->reset = 1;
+				for (int i = 0; i < 255; i++) tick();
+				top->reset = 0;
 			}
 			else
 				for (uint8_t k : e.keys) {
