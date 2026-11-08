@@ -36,6 +36,8 @@ module rk_cpu (
 	output reg fetch = 1'b0,
 	output reg io = 1'b0,
 	output reg stack = 1'b0,
+	input wire intr,             // the INT pin
+	output reg inta = 1'b0,      // the cycle acknowledges an interrupt (D0 of the status): put the opcode (RST n) on din
 	output wire inte,
 	output reg ce_f2 = 1'b0
 );
@@ -74,7 +76,7 @@ vm80a_core cpu80 (
 	.pin_hlda(hlda),
 	.pin_ready(ready),
 	.pin_wait(),
-	.pin_int(1'b0),
+	.pin_int(intr),
 	.pin_inte(inte),
 	.pin_sync(sync),
 	.pin_dbin(dbin),
@@ -86,6 +88,7 @@ always @(posedge clk)
 		fetch <= dout[5];
 		io <= dout[6] | dout[4];
 		stack <= dout[2];
+		inta <= dout[0];
 	end
 
 assign mem_rd = dbin;

@@ -24,7 +24,9 @@ module k580vg75 (
 	charset,
 	scr_shift,
 	font_addr,
-	font_data
+	font_data,
+	cur_attr,
+	cur_line
 );
 	input clk_sys;
 	input reset;   // karabas: back to the state of power on (the display off, the raster at 0)
@@ -48,6 +50,8 @@ module k580vg75 (
 	input [4:0] scr_shift;
 	output wire [10:0] font_addr;
 	input [7:0] font_data;
+	output wire [5:0] cur_attr;   // karabas: the field attribute of the character of font_addr (the Partner picks its font by it)
+	output wire [3:0] cur_line;   // karabas: the line counter in the row (the beeper of the Partner)
 	parameter CHAR_WIDTH = 5;
 	reg [7:0] init2;
 	wire [3:0] charheight = init2[3:0];
@@ -84,6 +88,8 @@ module k580vg75 (
 	wire curblink = init3[5];
 	wire curtype = init3[4];
 	reg [5:0] attr;
+	assign cur_attr = attr;
+	assign cur_line = chline;
 	reg [7:0] opos;
 	reg [6:0] ypos;
 	reg [4:0] frame;
