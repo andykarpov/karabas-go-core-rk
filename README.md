@@ -257,7 +257,8 @@ On the Mini G with an HDMI capture (picture and sound):
 | | Mini G |
 |---|---|
 | Radio-86RK: Monitor, keyboard (a dump of the ROM), `.rk` games with Autorun | yes |
-| SDOS: `GE000`, `DIR`, a program from the SD card | simulation (`DIR`) |
+| SDOS: `GE000`, `DIR`, `CD`, a program from the SD card, the RK86 back after the image is ejected | yes |
+| SDOS: writing to the image | not yet |
 | Mikrosha: Monitor, keyboard | yes |
 | Apogey: Monitor, keyboard, ROM disk shell in colour, a graphic game, music on the 8253 | yes |
 | Mikro-80, Mikro-80RK: Monitors, keyboard, ROM disk shell, Tetris | yes |
