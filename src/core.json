@@ -1,7 +1,7 @@
 {
     "id": "rk",
     "name": "Radio-86RK family",
-    "build": "26110806",
+    "build": "26110807",
     "visible": true,
     "type": "osd",
     "order": 16,
@@ -32,7 +32,7 @@
     },
     "osd": [
     {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka,.rk8,.rkp", "dir": "/rk", "hotkey": "Menu+F2"},
-    {"type": "FL", "name": "ROM disk", "slot": 2, "extensions": ".bin,.rom", "dir": "/rk", "hotkey": "Menu+F3"},
+    {"type": "FL", "name": "ROM disk", "slot": 2, "extensions": ".bin,.rom", "dir": "/rk", "hotkey": "Menu+F3", "autoload": 1},
     {"type": "F", "name": "SD card", "slot": 3, "extensions": ".img", "dir": "/rk", "hotkey": "Menu+F4"},
     {"type": "-"},
     {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80", "Mikro-80RK"], "default": 0, "hotkey": "Menu+M"},
