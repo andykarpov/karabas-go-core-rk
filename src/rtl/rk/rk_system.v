@@ -6,7 +6,7 @@
 
  The Radio-86RK family on one clock of 40 MHz: the processor, the memory map, the ports, the VG75 CRT
  controller with its DMA, the frame buffer, the video output and the SRAM. docs/HARDWARE.md has the maps.
- model: 0 the Radio-86RK, 1 the Mikrosha, 2 the Apogey BK-01, 3 the Partner (the RK86 for now), 4 the
+ model: 0 the Radio-86RK, 1 the Mikrosha, 2 the Apogey BK-01, 3 the Partner 01.01, 4 the
  Mikro-80 with its own Monitor, 5 the Mikro-80 with the Monitor of the RK type (Emu80 mikro80rk.conf,
  the ROM disk shell wants it). Change it only during reset.
 
@@ -17,7 +17,7 @@
  EE00, the VG75 at EF00, the ROM of 4 KB at F000 (writes there go to the DMA); its font set is INTE,
  its colour the attributes of the VG75. The ROM disk (Emu80 ApogeyRomDisk, Apogee_MiSTer EXTROM):
  port A reads byte { bank, PC[6:0], PB } of the disk, the bank is PB[3:0] at the rising edge of PC7.
- The 8253 is KF8253 (kitune-san, MIT) on 1.78 MHz, not on turbo.
+ The 8253 is KF8253 (kitune-san, MIT) on 1.78 MHz (the Partner 2 MHz), not on turbo.
 
  The Mikro-80 (Emu80 mikro80.inc): 2 MHz, no VG75 and no DMA. RAM to F7FF, the screen at E000-EFFF
  (rk_m80video draws it into the frame buffer from a copy in block RAM), the Monitor at F800. Its devices
@@ -26,6 +26,23 @@
  (07 is port A), 40-4F the page of the RAM disk (the first 0 bit of the byte: page 1..8, FF the main
  memory), A0-A3 the PPI of the ROM disk (port A reads byte { PC, PB }). The RAM disk (Emu80
  Ut88AddrSpaceMapper) takes the cycles of the stack (D2 of the status): 8 pages of 64 KB.
+
+ The Partner 01.01 (Emu80 partner.conf, Partner.cpp): 2 MHz, the VG75 at 1.5 MHz (points at 9 MHz).
+ Its map is one of 16, chosen by a write to the slot + 200 (D7..4), read from the PROM D14: for each
+ 2 KB of the address a block 0..8 (the number of the low 1 bits of its byte; 5 with D6 = 0 is 6):
+ 0 the ROM window of the module, 2 its RAM window, 3 ROM 2, 4 ROM 1 (8 KB each), 5 RAM 1, 6 RAM 2
+ (32 KB each), 7 the slot, else nothing (FF). The DMA goes through the same map. The slot (2 KB): +000
+ the VG75, +100 the keyboard PPI, +200 the map, +300 the VT57, +400 / +500 the devices of the module,
+ +600 the module (the first 0 bit of D3..0: 0 the SD card, 1 the floppy, 2 the colour module MCPG).
+ The MCPG (Emu80 PartnerMcpgRenderer): its ROM in the ROM window, its RAM (4 KB, also copied in block
+ RAM for the picture) in the RAM window, at +400 its switch (D7 = 0 shows its picture), at +500 an 8253
+ (A3..2, three channels of sound). Its picture covers the text: 4 points a character of 3-bit colours
+ from the RAM at { RVV, code, line } (the points 1, 0 in D2..0, D5..3; 3, 2 at + 800), the bits
+ inverted (0 lights R, G, B); 7, or a blanked place, is the background of the field attribute
+ (GPA0 R, GPA1 G, HGLT B); with GPA0 = GPA1 = 1, HGLT = 0 the text shows through.
+ Its font is one of 8 sets of 1 KB, picked by GPA0, GPA1, HGLT of the field attribute; the beeper is
+ bit 2 of the line counter of the VG75 at the end of HRTC, on while PC1 is 0; VRTC asks the interrupt
+ RST 6. Port C of its keyboard PPI: PC4 RUS/LAT, PC5 SS, PC6 US, PC7 the tape input.
 
  The VG75 (k580vg75) and the VT57 (k580vt57) come from Apogee_MiSTer and run at the native timing: the
  points at 8 MHz (40 / 5), the DMA on the F2 enable of the CPU, which it holds (HOLD / HLDA) while it reads
@@ -44,19 +61,22 @@
    101000  the ROM of the Apogey (4 KB, F000-FFFF)
    102000  the Monitor of the Mikro-80 (2 KB, F800-FFFF)
    102800  the Monitor of the RK type of the Mikro-80
+   104000  the Partner: ROM 1 (8 KB), 106000 ROM 2, 108000 / 108800 / 109000 the ROMs of its SD card,
+           floppy and MCPG modules (2 KB each), 10A000 the PROM D14 (512 bytes, kept decoded in rk_system)
    200000  the ROM disk (FL slot 2): the Apogey up to 512 KB, the Mikro-80 64 KB
    280000  the RAM disk of the Mikro-80, 8 x 64 KB
    300000  the frame buffer, 512 x 300 x 4 bits
- The fonts (the character generators, 2 KB each: the RK86, the Mikrosha, the Apogey, the Mikro-80) are
- a block RAM of 8 KB, written by the ROM loader at 1F0000, 1F0800, 1F1000, 1F1800, inverted: the fonts
- of Emu80 have a point as 0. The ROMs arrive by the ROM loader of the mcu; the machine is in reset while they load.
+ The fonts (the character generators, 2 KB each: the RK86, the Mikrosha, the Apogey, the Mikro-80; 8 KB
+ of the Partner) are a block RAM of 16 KB, written by the ROM loader at 1F0000, 1F0800, 1F1000, 1F1800,
+ 1F2000, inverted: the fonts of Emu80 have a point as 0. The ROMs arrive by the ROM loader of the mcu; the machine is in reset while they load.
 
  After reset the Monitor answers every read (its first bytes are a jump to F836), until the first read
  at 8000-FFFF, as the startup flip-flop of Apogee_MiSTer.
 
  A tape file starts as Emu80 runs it: after the load the machine leaves reset, its Monitor runs for
- 200 ms (it sets up the PPI, the VG75 and its variables), then the next opcode fetch reads JMP start
- instead of the memory (autorun; core-specialist does the same).
+ 2 000 000 ticks of the CPU (3.5 s on the Mikro-80; it sets up the PPI, the VG75 and its variables),
+ then the next opcode fetch reads JMP start instead of the memory (autorun; core-specialist does the
+ same).
 */
 
 module rk_system (
@@ -114,12 +134,14 @@ wire hrq, hlda;
 wire m_mk = model == 3'd1;
 wire m_ap = model == 3'd2;
 wire m_80 = model == 3'd4 || model == 3'd5;
-wire m_rk = !m_mk && !m_ap && !m_80;
+wire m_pt = model == 3'd3;
+wire m_rk = !m_mk && !m_ap && !m_80 && !m_pt;
+wire pt_int, inta;
 
 rk_cpu cpu (
 	.clk(clk),
 	.reset(run_reset),
-	.fast(m_80),
+	.fast(m_80 | m_pt),
 	.turbo(turbo),
 	.hold(hrq),
 	.hlda(hlda),
@@ -132,12 +154,16 @@ rk_cpu cpu (
 	.fetch(fetch),
 	.io(io),
 	.stack(stack),
+	.intr(pt_int),
+	.inta(inta),
 	.inte(inte),
 	.ce_f2(ce_f2)
 );
 
 reg tape01 = 1'b0;            // the tape register of the Mikro-80 (port 01)
-assign beep = m_rk & inte | m_80 & tape01;
+reg pt_beep = 1'b0;           // the beeper of the Partner (bit 2 of the line counter of the VG75)
+wire [7:0] ppi1_pc;
+assign beep = m_rk & inte | m_80 & tape01 | m_pt & pt_beep & !ppi1_pc[1];
 
 reg wr_d = 1'b0;
 always @(posedge clk)
@@ -148,9 +174,49 @@ wire wr_p = mem_wr & ~wr_d;
 reg startup = 1'b1;
 always @(posedge clk)
 	if (run_reset)
-		startup <= 1'b1;
+		startup <= !m_pt;            // the Partner has its ROM at 0000 in map 0
 	else if (mem_rd && a[15])
 		startup <= 1'b0;
+
+// ------------------------------------------------------------------ the map of the Partner
+// D14 decoded at its load: the block of each 2 KB of each map
+reg [3:0] d14 [0:511];
+always @(posedge clk)
+	if (rom_wr && rom_addr[21:9] == 13'h0850)     // 10A000-10A1FF
+		d14[rom_addr[8:0]] <= !rom_data[0] ? 4'd0 : !rom_data[1] ? 4'd1 : !rom_data[2] ? 4'd2 :
+		                      !rom_data[3] ? 4'd3 : !rom_data[4] ? 4'd4 :
+		                      !rom_data[5] ? (rom_data[6] ? 4'd5 : 4'd6) : !rom_data[6] ? 4'd6 :
+		                      !rom_data[7] ? 4'd7 : 4'd8;
+reg [3:0] pmap = 4'd0;        // the map
+reg mc_en = 1'b0;             // the picture of the MCPG is on
+reg [2:0] pmod = 3'd0;        // the module: 0 SD card, 1 floppy, 2 MCPG, 4 none
+reg [3:0] pblk = 4'd8, pblk_dma = 4'd8;
+wire [15:0] dma_addr;
+always @(posedge clk) begin
+	pblk <= d14[{ pmap, a[15:11] }];
+	pblk_dma <= d14[{ pmap, dma_addr[15:11] }];
+end
+// the SRAM address of a block (the ROMs, the RAMs), and its kind
+function [21:0] pt_sram;
+	input [3:0] blk;
+	input [15:0] ad;
+	case (blk)
+		4'd0: pt_sram = 22'h108000 | { 9'd0, pmod[1:0], ad[10:0] };
+		4'd2: pt_sram = 22'h10C000 | { 10'd0, ad[11:0] };   // the RAM of the MCPG
+		4'd3: pt_sram = 22'h106000 | { 9'd0, ad[12:0] };
+		4'd4: pt_sram = 22'h104000 | { 9'd0, ad[12:0] };
+		default: pt_sram = { 6'd0, blk == 4'd6, ad[14:0] };   // RAM 1, RAM 2
+	endcase
+endfunction
+wire pt_rom = m_pt && (pblk == 4'd3 || pblk == 4'd4 || (pblk == 4'd0 && pmod < 3'd3));
+wire pt_mcram = m_pt && pblk == 4'd2 && pmod == 3'd2;
+wire pt_ram = m_pt && (pblk == 4'd5 || pblk == 4'd6) || pt_mcram;
+wire pt_slot = m_pt && pblk == 4'd7;
+wire [2:0] pt_sub = a[10:8];
+wire sel_pmap = pt_slot && pt_sub == 3'd2;
+wire sel_pmod = pt_slot && pt_sub[2:1] == 2'b11;
+wire pt_dev = pt_slot && pt_sub[2:1] == 2'b10;      // the devices of the module
+wire sel_mcsw = pt_dev && !pt_sub[0] && pmod == 3'd2;
 
 // ------------------------------------------------------------------ decoding
 wire f800 = a[15:11] == 5'b11111;
@@ -165,20 +231,21 @@ reg [3:0] rpage = 4'd0;       // the RAM disk of the Mikro-80: 0 the main memory
 wire sel_rpg = m80_mem && stack && rpage != 4'd0;
 wire sel_tape = m80_io && a[7:0] == 8'h01;
 wire sel_page = m80_io && a[7:4] == 4'h4;
-wire sel_ppi1 = m_80 ? m80_io && a[7:2] == 6'b000001 : m_mk ? a[15:11] == 5'b11000 :
+wire sel_ppi1 = m_pt ? pt_slot && pt_sub == 3'd1 : m_80 ? m80_io && a[7:2] == 6'b000001 : m_mk ? a[15:11] == 5'b11000 :
                 m_ap ? ap_io && a[9:8] == 2'd1 : a[15:13] == 3'b100;
-wire sel_ppi2 = m_80 ? m80_io && a[7:2] == 6'b101000 : m_mk ? a[15:11] == 5'b11001 :
+wire sel_ppi2 = m_pt ? 1'b0 : m_80 ? m80_io && a[7:2] == 6'b101000 : m_mk ? a[15:11] == 5'b11001 :
                 m_ap ? ap_io && a[9:8] == 2'd2 : a[15:13] == 3'b101;
-wire sel_crt = m_80 ? 1'b0 : m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 : a[15:13] == 3'b110;
-wire sel_pit = m_mk ? a[15:11] == 5'b11011 : m_ap ? ap_io && a[9:8] == 2'd0 : 1'b0;
-wire sel_mon = m_80 ? m80_mem && f800 : m_ap ? a[15:12] == 4'hF : f800;
-wire sel_dma = m_80 ? 1'b0 : m_rk ? a[15:13] == 3'b111 : sel_mon;
+wire sel_crt = m_pt ? pt_slot && pt_sub == 3'd0 : m_80 ? 1'b0 : m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 : a[15:13] == 3'b110;
+wire sel_pit = m_pt ? pt_dev && pt_sub[0] && pmod == 3'd2 :
+               m_mk ? a[15:11] == 5'b11011 : m_ap ? ap_io && a[9:8] == 2'd0 : 1'b0;
+wire sel_mon = m_pt ? pt_rom : m_80 ? m80_mem && f800 : m_ap ? a[15:12] == 4'hF : f800;
+wire sel_dma = m_pt ? pt_slot && pt_sub == 3'd3 : m_80 ? 1'b0 : m_rk ? a[15:13] == 3'b111 : sel_mon;
 wire sel_rom = !sel_rpg && (startup || (sel_mon && !mem_wr));
-wire sel_ram = m_80 ? m80_mem && !f800 : m_ap ? a[15:12] != 4'hF && !ap_io : !a[15];
+wire sel_ram = m_pt ? pt_ram : m_80 ? m80_mem && !f800 : m_ap ? a[15:12] != 4'hF && !ap_io : !a[15];
 wire sel_rdisk = (m_ap || m_80) && sel_ppi2 && a[1:0] == 2'd0;   // port A: the ROM disk
 
 // ------------------------------------------------------------------ the PPIs
-wire [7:0] ppi1_do, ppi2_do, ppi1_pc, ppi1_pa, ppi1_pb, ppi2_pb, ppi2_pc;
+wire [7:0] ppi1_do, ppi2_do, ppi1_pa, ppi1_pb, ppi2_pb, ppi2_pc;
 wire ppi2_pb_in;
 
 wire [7:0] kb_scan, kb_ret;
@@ -187,7 +254,8 @@ wire [3:0] kb_pc_hi, kb_pc_lo;
 rk_ppi ppi1 (
 	.clk(clk), .reset(run_reset), .a(m_80 ? ~a[1:0] : a[1:0]), .wr(wr_p & sel_ppi1), .din(cpu_do), .dout(ppi1_do),
 	.pa_i(m_mk ? kb_ret : 8'hFF), .pb_i(m_mk ? 8'hFF : kb_ret),
-	.pc_i(m_80 ? { 3'b111, tape_in, kb_pc_lo } : { kb_pc_hi[3:1], tape_in, 4'hF }),
+	.pc_i(m_pt ? { tape_in, kb_pc_lo[1], kb_pc_lo[2], kb_pc_lo[0], 4'hF } :
+	      m_80 ? { 3'b111, tape_in, kb_pc_lo } : { kb_pc_hi[3:1], tape_in, 4'hF }),
 	.pa_in(), .pb_in(), .pcl_in(),
 	.pa_o(ppi1_pa), .pb_o(ppi1_pb), .pc_o(ppi1_pc)
 );
@@ -200,12 +268,21 @@ rk_kbd kbd (
 );
 assign tape_out = m_80 ? tape01 : ppi1_pc[0];
 
-// the tape register and the RAM disk page of the Mikro-80
+// the tape register and the RAM disk page of the Mikro-80, the map and the module of the Partner
 always @(posedge clk)
 	if (run_reset) begin
 		tape01 <= 1'b0;
 		rpage <= 4'd0;
+		pmap <= 4'd0;
+		pmod <= 3'd0;
+		mc_en <= 1'b0;
 	end
+	else if (wr_p && sel_mcsw)
+		mc_en <= !cpu_do[7];
+	else if (wr_p && sel_pmap)
+		pmap <= cpu_do[7:4];
+	else if (wr_p && sel_pmod)
+		pmod <= !cpu_do[0] ? 3'd0 : !cpu_do[1] ? 3'd1 : !cpu_do[2] ? 3'd2 : !cpu_do[3] ? 3'd3 : 3'd4;
 	else if (wr_p && sel_tape)
 		tape01 <= cpu_do[0];
 	else if (wr_p && sel_page)
@@ -239,7 +316,10 @@ wire charset = m_mk ? !ppi2_pb_in && ppi2_pb[7] : m_ap ? inte : 1'b0;
 reg [5:0] pit_acc = 6'd0;      // 40 MHz * 2 / 45 = 1.78 MHz
 always @(posedge clk)
 	pit_acc <= pit_acc >= 6'd43 ? pit_acc - 6'd43 : pit_acc + 6'd2;
-wire pit_clk = pit_acc < 6'd23;
+reg [4:0] pit_div = 5'd0;      // the Partner: 2 MHz (40 / 20), the clock of its CPU
+always @(posedge clk)
+	pit_div <= pit_div == 5'd19 ? 5'd0 : pit_div + 5'd1;
+wire pit_clk = m_pt ? pit_div < 5'd10 : pit_acc < 6'd23;
 wire [7:0] pit_do;
 wire pit_out0, pit_out1, pit_out2;
 
@@ -249,7 +329,7 @@ KF8253 pit (
 	.chip_select_n(~sel_pit),
 	.read_enable_n(~mem_rd),
 	.write_enable_n(~mem_wr),
-	.address(a[1:0]),
+	.address(m_pt ? a[3:2] : a[1:0]),
 	.data_bus_in(cpu_do),
 	.data_bus_out(pit_do),
 	.counter_0_clock(pit_clk),
@@ -266,7 +346,7 @@ KF8253 pit (
 wire [15:0] v0 = pit_out0 ? 16'h1000 : 16'h0000;
 wire [15:0] v1 = pit_out1 ? 16'h1000 : 16'h0000;
 wire [15:0] v2 = pit_out2 ? 16'h1000 : 16'h0000;
-wire [15:0] snd_pit = m_ap ? v0 + v1 + v2 : m_mk ? (ppi1_pc[1] ? v2 : 16'h0000) : 16'h0000;
+wire [15:0] snd_pit = m_ap || m_pt ? v0 + v1 + v2 : m_mk ? (ppi1_pc[1] ? v2 : 16'h0000) : 16'h0000;
 wire [15:0] mix = (beep ? 16'h1800 : 16'h0000) + (tape_out ? 16'h0400 : 16'h0000) + snd_pit;
 
 // a low-pass of two first-order stages of about 12 kHz (40 MHz / (2 pi 512)) before the 48 kHz samples:
@@ -280,14 +360,16 @@ end
 assign audio = lp2[24:9];
 
 // ------------------------------------------------------------------ the VG75 and its DMA
+// 8 MHz = 40 / 5; the Partner 9 MHz (its characters at 1.5 MHz): + 9 modulo 40
 reg [2:0] pix_div = 3'd0;
+reg [5:0] pix_acc = 6'd0;
 reg ce_pix = 1'b0;
 always @(posedge clk) begin
 	pix_div <= pix_div == 3'd4 ? 3'd0 : pix_div + 3'd1;
-	ce_pix <= pix_div == 3'd4;
+	pix_acc <= pix_acc >= 6'd31 ? pix_acc - 6'd31 : pix_acc + 6'd9;
+	ce_pix <= m_pt ? pix_acc >= 6'd31 : pix_div == 3'd4;
 end
 
-wire [15:0] dma_addr;
 wire vid_drq, vid_dack;
 wire [3:0] dack;
 wire [7:0] crt_do;
@@ -318,14 +400,19 @@ k580vt57 dma (
 assign vid_dack = dack[2];
 
 // the fonts: 2 KB of each model, written by the ROM loader at 1F0000
-reg [7:0] font [0:8191];
+reg [7:0] font [0:16383];
 reg [7:0] font_q = 8'd0;
 wire [1:0] font_sel = m_80 ? 2'd3 : m_mk ? 2'd1 : m_ap ? 2'd2 : 2'd0;
 wire [9:0] m80_font_addr;
+wire [5:0] vg_attr;
+wire [3:0] vg_line;
+// the Partner: the set GPA0 + 2 GPA1 + 4 HGLT of the field attribute
+wire [2:0] pt_set = { vg_attr[0], vg_attr[3], vg_attr[2] };
 always @(posedge clk) begin
-	if (rom_wr && rom_addr[21:13] == 9'h0F8)     // 1F0000-1F1FFF
-		font[rom_addr[12:0]] <= ~rom_data;   // the fonts of Emu80 are stored inverted (a point is 0)
-	font_q <= font[{ font_sel, m_80 ? { 1'b0, m80_font_addr } : font_addr }];
+	if (rom_wr && rom_addr[21:14] == 8'h7C)      // 1F0000-1F3FFF
+		font[rom_addr[13:0]] <= ~rom_data;   // the fonts of Emu80 are stored inverted (a point is 0)
+	font_q <= font[m_pt ? { 1'b1, pt_set, font_addr[9:0] } :
+	               { 1'b0, font_sel, m_80 ? { 1'b0, m80_font_addr } : font_addr }];
 end
 
 // the Mikro-80: its text screen as the stream of points
@@ -342,6 +429,11 @@ rk_m80video m80video (
 	.hblank(m80_hb),
 	.vblank(m80_vb)
 );
+
+// the character of the point for the MCPG of the Partner
+wire [10:0] mc_addr;
+wire [2:0] mc_attr, mc_pt;
+wire mc_bg, mc_gfx, mc_on;
 
 k580vg75 crt (
 	.clk_sys(clk),
@@ -365,16 +457,65 @@ k580vg75 crt (
 	.charset(charset),
 	.scr_shift(5'd0),
 	.font_addr(font_addr),
-	.font_data(font_q)
+	.font_data(font_q),
+	.cur_attr(vg_attr),
+	.cur_line(vg_line),
+	.mc_addr(mc_addr),
+	.mc_attr(mc_attr),
+	.mc_bg(mc_bg),
+	.mc_gfx(mc_gfx),
+	.mc_pt(mc_pt),
+	.mc_on(mc_on)
 );
+
+// the picture of the MCPG: its RAM in two halves of 2 KB (the points 0, 1 and 2, 3 of a character)
+reg [7:0] mc_lo [0:2047];
+reg [7:0] mc_hi [0:2047];
+reg [7:0] mc_lq = 8'd0, mc_hq = 8'd0;
+always @(posedge clk) begin
+	if (sram_we && pt_mcram && !a[11])
+		mc_lo[a[10:0]] <= cpu_do;
+	mc_lq <= mc_lo[mc_addr];
+end
+always @(posedge clk) begin
+	if (sram_we && pt_mcram && a[11])
+		mc_hi[a[10:0]] <= cpu_do;
+	mc_hq <= mc_hi[mc_addr];
+end
+// 4 points over the 6 of the character: 0 0 1 2 2 3
+wire [2:0] mc_c = mc_pt < 3'd2 ? mc_lq[5:3] : mc_pt == 3'd2 ? mc_lq[2:0] : mc_pt < 3'd5 ? mc_hq[5:3] : mc_hq[2:0];
+// R G B: of the colour, its bits inverted; of the background, GPA0 GPA1 HGLT
+wire [2:0] mc_rgb = mc_c == 3'd7 || mc_bg ? { mc_attr[0], mc_attr[1], mc_attr[2] } : ~{ mc_c[0], mc_c[1], mc_c[2] };
+wire mc_show = m_pt && mc_en && mc_on && !(mc_attr == 3'b011 && !mc_gfx);
+
+// the beeper and the interrupt of the Partner
+reg hrtc_d = 1'b0, vrtc_d = 1'b0, pt_req = 1'b0;
+always @(posedge clk) begin
+	hrtc_d <= hrtc;
+	vrtc_d <= vrtc;
+	if (hrtc_d && !hrtc)
+		pt_beep <= !vg_line[2];
+	if (run_reset)
+		pt_req <= 1'b0;
+	else if (vrtc && !vrtc_d)
+		pt_req <= 1'b1;
+	else if (inta && mem_rd)
+		pt_req <= 1'b0;
+end
+assign pt_int = m_pt && pt_req;
 
 // ------------------------------------------------------------------ the frame buffer (write side)
 // the points: of the VG75, or of the screen of the Mikro-80
 wire pix = m_80 ? m80_pix : vg_pix;
-wire hilight = m_80 ? 1'b0 : vg_hilight;
-wire [1:0] gattr = m_80 ? 2'b00 : vg_gattr;
-wire hblank = m_80 ? m80_hb : vg_hblank;
-wire vblank = m_80 ? m80_vb : vg_vblank;
+wire hilight = m_80 || m_pt ? 1'b0 : vg_hilight;   // the attributes of the Partner pick its font
+wire [1:0] gattr = m_80 || m_pt ? 2'b00 : vg_gattr;
+// the point in the buffer: { pix, hilight, gattr }; of the Partner { 0, pix, pix, pix } or the colour
+// of the MCPG { 1, R, G, B } (rk_video, partner)
+wire [3:0] fb_pt = m_pt ? (mc_show ? { 1'b1, mc_rgb } : { 1'b0, pix, pix, pix }) : { pix, hilight, gattr };
+// the Partner: the window from the end of the retraces (its Monitor puts the text left of the hblank
+// of this VG75, which is tuned to the RK raster), as Emu80 shows the whole raster
+wire hblank = m_80 ? m80_hb : m_pt ? hrtc : vg_hblank;
+wire vblank = m_80 ? m80_vb : m_pt ? vrtc : vg_vblank;
 reg hb_d = 1'b1, vb_d = 1'b1;
 reg [9:0] fx = 10'd0;
 reg [8:0] fy = 9'd0;
@@ -411,9 +552,9 @@ always @(posedge clk) begin
 			fx <= fx + 10'd1;
 		if (fx < 10'd512 && fy < 9'd300) begin
 			if (!fx[0])
-				lo_nib <= act ? { pix, hilight, gattr } : 4'd0;
+				lo_nib <= act ? fb_pt : 4'd0;
 			else begin
-				fq[fq_wp] <= { fy, fx[8:1], act ? { pix, hilight, gattr } : 4'd0, lo_nib };
+				fq[fq_wp] <= { fy, fx[8:1], act ? fb_pt : 4'd0, lo_nib };
 				fq_push <= 1'b1;
 			end
 		end
@@ -427,7 +568,8 @@ wire [21:0] mon_off = m_ap ? 22'h101000 | { 10'd0, a[11] | startup, a[10:0] } :
                       model == 3'd5 ? 22'h102800 | { 11'd0, a[10:0] } : m_80 ? 22'h102000 | { 11'd0, a[10:0] } :
                       m_mk ? 22'h100800 | { 11'd0, a[10:0] } : 22'h100000 | { 11'd0, a[10:0] };
 wire [2:0] rpage_n = rpage[2:0] - 3'd1;   // pages 1..8 as 0..7
-wire [21:0] sram_addr = hlda ? { 6'd0, dma_addr } : sel_rpg ? { 3'b101, rpage_n, a } : sel_rom ? mon_off :
+wire [21:0] sram_addr = hlda ? (m_pt ? pt_sram(pblk_dma, dma_addr) : { 6'd0, dma_addr }) :
+                        m_pt ? pt_sram(pblk, a) : sel_rpg ? { 3'b101, rpage_n, a } : sel_rom ? mon_off :
                         sel_rdisk ? 22'h200000 | { 3'd0, rd_addr } : { 6'd0, a };
 assign sram_we = mem_wr && (sel_ram || sel_rpg) && !hlda;
 
@@ -435,7 +577,7 @@ assign sram_we = mem_wr && (sel_ram || sel_rpg) && !hlda;
 wire [15:0] rk_start;
 wire rk_ok;
 reg file_d = 1'b0, rd_d = 1'b0;
-reg [22:0] run_wait = 23'd0;   // 200 ms of the Monitor
+reg [27:0] run_wait = 28'd0;   // the Monitor runs first, as the skipTicks of Emu80
 reg run_pend = 1'b0, run_arm = 1'b0;
 reg [1:0] inj = 2'd0;          // 1 the opcode, 2 / 3 the address bytes
 wire rd_end = rd_d & ~mem_rd;
@@ -451,15 +593,18 @@ always @(posedge clk) begin
 		run_pend <= autorun && rk_ok && file_slot == 8'd1;
 		run_arm <= 1'b0;
 		inj <= 2'd0;
-		run_wait <= 23'd7999999;
+		// 2 000 000 ticks of the CPU (Emu80: 1.125 s at 1.78 MHz, 1 s at 2 MHz; the Monitor of the Partner
+		// sets its variables only after 0.4 s), the Mikro-80 7 000 000 (3.5 s: its RK type Monitor checks
+		// the memory for 3 s)
+		run_wait <= m_80 ? 28'd139999999 : m_pt ? 28'd39999999 : 28'd44999999;
 	end
 	else if (run_pend) begin
-		if (run_wait == 23'd0) begin
+		if (run_wait == 28'd0) begin
 			run_pend <= 1'b0;
 			run_arm <= 1'b1;
 		end
 		else
-			run_wait <= run_wait - 23'd1;
+			run_wait <= run_wait - 28'd1;
 	end
 	else if (run_arm && mem_rd && fetch) begin
 		run_arm <= 1'b0;
@@ -471,7 +616,8 @@ end
 
 always @* begin
 	cpu_di = 8'hFF;
-	if (inj == 2'd1) cpu_di = 8'hC3;
+	if (inta) cpu_di = 8'hF7;            // RST 6 (the interrupt of the Partner)
+	else if (inj == 2'd1) cpu_di = 8'hC3;
 	else if (inj == 2'd2) cpu_di = rk_start[7:0];
 	else if (inj == 2'd3) cpu_di = rk_start[15:8];
 	else if (sel_rpg) cpu_di = sram_do;
@@ -524,6 +670,7 @@ wire [15:0] vid_dout;
 rk_video video (
 	.clk(clk),
 	.color(color && m_ap),
+	.partner(m_pt),
 	.vid_req(vid_req),
 	.vid_addr(vid_addr),
 	.vid_dout(vid_dout),

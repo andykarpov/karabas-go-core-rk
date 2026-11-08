@@ -1,7 +1,7 @@
 {
     "id": "rk",
     "name": "Radio-86RK family",
-    "build": "26110803",
+    "build": "26110805",
     "visible": true,
     "type": "osd",
     "order": 16,
@@ -12,16 +12,23 @@
     {"filename": "roms/apogey.rom", "address": 1052672},
     {"filename": "roms/mikro80.rom", "address": 1056768},
     {"filename": "roms/mikro80rk.rom", "address": 1058816},
+    {"filename": "roms/romp1.bin", "address": 1064960},
+    {"filename": "roms/romp2.bin", "address": 1073152},
+    {"filename": "roms/sdrom.bin", "address": 1081344},
+    {"filename": "roms/fddrom.bin", "address": 1083392},
+    {"filename": "roms/mcpgrom.bin", "address": 1085440},
+    {"filename": "roms/d14.bin", "address": 1089536},
     {"filename": "roms/sgr.bin", "address": 2031616},
     {"filename": "roms/sgm.bin", "address": 2033664},
     {"filename": "roms/sga.bin", "address": 2035712},
-    {"filename": "roms/sgm80.bin", "address": 2037760}
+    {"filename": "roms/sgm80.bin", "address": 2037760},
+    {"filename": "roms/sgp.bin", "address": 2039808}
     ],
     "boards": {
         "minig": {"bitstream": "karabas_minig.bin"}
     },
     "osd": [
-    {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka,.rk8", "dir": "/rk", "hotkey": "Menu+F2"},
+    {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka,.rk8,.rkp", "dir": "/rk", "hotkey": "Menu+F2"},
     {"type": "FL", "name": "ROM disk", "slot": 2, "extensions": ".bin,.rom", "dir": "/rk", "hotkey": "Menu+F3"},
     {"type": "-"},
     {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80", "Mikro-80RK"], "default": 0, "hotkey": "Menu+M"},

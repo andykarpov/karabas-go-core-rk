@@ -8,7 +8,7 @@
 // machine in reset meanwhile). --key sends PS/2 set 2 bytes (hex) at that time, 50 us apart. --ppm
 // writes the frame buffer (512 x 300, 4 bits a point at 300000 of the SRAM) as an image; --frame
 // captures the next whole frame of the video output (800 x 600). --expect checks a byte of the SRAM (a
-// byte address of rk_sram) at the end; --dump prints bytes of the SRAM. TRACE=N prints N CPU reads.
+// byte address of rk_sram) at the end; --dump prints bytes of the SRAM. TRACE=N prints N CPU reads (from TRACE_FROM ms).
 // --wav OUT writes the audio sampled at 48 kHz (every 833 clocks), mono 16-bit.
 // --model: 0 the RK86, 1 the Mikrosha, 2 the Apogey; --switch MS:N changes it at that time under a reset of
 // 255 clocks, as the top does. "sound edges" counts the changes of the audio.
@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
 	uint64_t t0 = clks, end = t0 + (uint64_t)ms * 40000;
 	int beeps = 0, prev = 0, prd = 0, snds = 0, psnd = 0;
 	int trace = getenv("TRACE") ? atoi(getenv("TRACE")) : 0;
+	uint64_t trace_from = getenv("TRACE_FROM") ? strtoull(getenv("TRACE_FROM"), nullptr, 0) * 40000 : 0;   // ms
 	while (clks < end) {
 		for (auto &e : evs) {
 			if (e.at == UINT64_MAX || clks - t0 < e.at) continue;
@@ -146,7 +147,7 @@ int main(int argc, char **argv) {
 		if (top->audio != psnd) snds++;
 		psnd = top->audio;
 		if (wav && (clks - t0) % 833 == 0) pcm.push_back((int16_t)(top->audio >> 1));
-		if (trace > 0 && top->dbg_rd && !prd) { printf("rd %04x\n", top->dbg_a); trace--; }
+		if (trace > 0 && top->dbg_rd && !prd && clks - t0 >= trace_from) { printf("rd %04x\n", top->dbg_a); trace--; }
 		prd = top->dbg_rd;
 	}
 	uint32_t sum = 0, lit = 0;
@@ -160,7 +161,7 @@ int main(int argc, char **argv) {
 			lit += ((b >> 3) & 1) + ((b >> 7) & 1);
 		}
 	static const char *names[] = { "RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80", "Mikro-80RK", "?", "?" };
-	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model & 7], turbo ? "turbo" : model >= 4 ? "2MHz" : "1.78MHz", ms, beeps, snds, sum, lit);
+	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model & 7], turbo ? "turbo" : model >= 3 ? "2MHz" : "1.78MHz", ms, beeps, snds, sum, lit);
 	for (auto &d : dumps) {
 		for (int i = 0; i < d.second; i++) { if (i % 32 == 0) printf("\n%06x:", d.first + i); printf(" %02x", peek(d.first + i)); }
 		printf("\n");
@@ -188,6 +189,12 @@ int main(int argc, char **argv) {
 			uint8_t p[3] = { v, v, v };
 			if (color && (fb[i] & 8)) {   // the Apogey: R = !hilight, G = !gattr1, B = !gattr0
 				p[0] = (fb[i] & 4) ? 0 : 255; p[1] = (fb[i] & 2) ? 0 : 255; p[2] = (fb[i] & 1) ? 0 : 255;
+			}
+			if (model == 3) {   // the Partner: { 0, p, p, p } the text, { 1, R, G, B } the MCPG
+				uint8_t t = (fb[i] & 1) ? 192 : 0;
+				p[0] = (fb[i] & 8) ? ((fb[i] & 4) ? 255 : 0) : t;
+				p[1] = (fb[i] & 8) ? ((fb[i] & 2) ? 255 : 0) : t;
+				p[2] = (fb[i] & 8) ? ((fb[i] & 1) ? 255 : 0) : t;
 			}
 			fwrite(p, 1, 3, f);
 		}

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A new core of the Soviet home computers of the Radio-86RK family (KR580VM80A with the KR580VG75 CRT controller and the KR580VT57 DMA): Radio-86RK, Mikrosha, Apogey BK-01, and Mikro-80 (its own text screen), one core with the model in the OSD, for the Karabas Go, Mini and Mini G boards: Xilinx Spartan-6 XC6SLX25, ISE 14.7 (XST). It replaces the old `karabas-go-core-rk86`.
+A new core of the Soviet home computers of the Radio-86RK family (KR580VM80A with the KR580VG75 CRT controller and the KR580VT57 DMA): Radio-86RK, Mikrosha, Apogey BK-01, Partner 01.01 (memory maps, its colour module MCPG), and Mikro-80 (its own text screen), one core with the model in the OSD, for the Karabas Go, Mini and Mini G boards: Xilinx Spartan-6 XC6SLX25, ISE 14.7 (XST). It replaces the old `karabas-go-core-rk86`.
 
-Status: phase 0 done: the Radio-86RK without keyboard and video output boots its Monitor in simulation, the picture comes out of the frame buffer. Docs, in Russian: `docs/PLAN.md` (research, decisions, phases), `docs/HARDWARE.md` (memory maps and ports), `docs/BACKLOG.md`. Follow the phases; record a changed decision in PLAN.md.
+Status: phases 0-3 merged (RK86, Mikrosha, Apogey, Mikro-80 on the Mini G); phase 4 (the Partner with the MCPG) in progress. Docs, in Russian: `docs/PLAN.md` (research, decisions, phases), `docs/HARDWARE.md` (memory maps and ports), `docs/BACKLOG.md`. Follow the phases; record a changed decision in PLAN.md.
 
 All file work goes through the firmware (OSD, `FL` / `F` items, burst): no loader or soft CPU in the core. **A frame buffer in the SRAM** (the user's decision, 2026-11-07): the VG75 and VT57 of Apogee_MiSTer run at the native timing (the DMA takes cycles from the CPU), their point stream is written into a 512 x 300 x 4-bit window in the SRAM, and the output reads it at a standard video timing (800 x 600 at 60 Hz) whatever the program sets the VG75 to. References: Emu80 v4 (`vpyk/emu80v4`, GPL-3) for the behaviour; Apogee_MiSTer (Tselikov, Sorgelig; BSD-2, `k580vi53` GPL v3) as the main source for the VG75 / VT57 / keyboard; Foxlisic/Radio86Board (MIT) for a VG75 that reads memory itself. The core is GPL v3 (`LICENSE`).
 
@@ -19,7 +19,7 @@ The template is `../karabas-go-core-specialist` (and `../karabas-go-core-orion12
 - `src/core.json`: the core file description (kgo2, `rk.kg`).
 - `src/rtl/rk/`: `rk_system.v` (the machine, the frame buffer writer), `rk_cpu.v` (vm80a at 1.78 / 2 MHz with a fractional divider, HOLD / HLDA, ce_f2 for the DMA), `rk_sram.v` (spec_sram), `rk_ppi.v` (spec_ppi). `src/rtl/apogee/`: `k580vg75.v` (sv2v of Apogee_MiSTer, the font moved out), `k580vt57.v` (sync reset), `LICENSE.TXT`. `src/rtl/vm80a/`: upstream.
 - `src/roms/`: `rk86.rom` (SRAM 100000), `sgr.bin` (the font, 1F0000), from Emu80; the fonts of Emu80 are inverted (written inverted into the font BRAM).
-- `src/sim/run_boot.sh`: verilator; `sim_boot` `--rom`, `--ms`, `--ppm` (the frame buffer), `--expect`, `--dump ADDR:N`, `TRACE=N` (CPU reads). `src/rk.prj`, `rk.xst`: the machine alone, `make rk-xst`.
+- `src/sim/run_boot.sh`: verilator, all models (header of the script lists the tests); `EMU80=<emu80v4 checkout>` adds the Partner games and the MCPG, `FULL=1` the Apogey ROM disk shell, `SIM_BUILD=DIR` another build directory. `sim_boot` `--rom`, `--model`, `--ms`, `--file MS:SLOT:FILE`, `--key`, `--switch MS:MODEL`, `--ppm` (the frame buffer, decoded per model), `--frame`, `--wav`, `--expect`, `--dump ADDR:N`, `TRACE=N` (CPU reads). `src/rk.prj`, `rk.xst`: the machine alone, `make rk-xst`.
 - `modules/`: the git submodule [karabas-go-modules](https://github.com/andykarpov/karabas-go-modules). Clone with `--recursive`.
 
 ## Rules of the core
