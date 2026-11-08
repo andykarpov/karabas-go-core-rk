@@ -6,8 +6,9 @@
 
  The Radio-86RK family on one clock of 40 MHz: the processor, the memory map, the ports, the VG75 CRT
  controller with its DMA, the frame buffer, the video output and the SRAM. docs/HARDWARE.md has the maps.
- model: 0 the Radio-86RK, 1 the Mikrosha, 2 the Apogey BK-01 (3 and 4, the Partner and the Mikro-80, are
- the RK86 for now). Change it only during reset.
+ model: 0 the Radio-86RK, 1 the Mikrosha, 2 the Apogey BK-01, 3 the Partner (the RK86 for now), 4 the
+ Mikro-80 with its own Monitor, 5 the Mikro-80 with the Monitor of the RK type (Emu80 mikro80rk.conf,
+ the ROM disk shell wants it). Change it only during reset.
 
  The Mikrosha: the keyboard PPI at C000 with ports A and B swapped (rk_kbd mikrosha), the second PPI
  at C800 (PB7 the second font), the VG75 at D000, the 8253 at D800 (channel 2 the sound, gated by PC1
@@ -17,6 +18,14 @@
  its colour the attributes of the VG75. The ROM disk (Emu80 ApogeyRomDisk, Apogee_MiSTer EXTROM):
  port A reads byte { bank, PC[6:0], PB } of the disk, the bank is PB[3:0] at the rising edge of PC7.
  The 8253 is KF8253 (kitune-san, MIT) on 1.78 MHz, not on turbo.
+
+ The Mikro-80 (Emu80 mikro80.inc): 2 MHz, no VG75 and no DMA. RAM to F7FF, the screen at E000-EFFF
+ (rk_m80video draws it into the frame buffer from a copy in block RAM), the Monitor at F800. Its devices
+ are I/O ports (IN / OUT; the RK models keep taking those cycles as memory at { n, n }, as the real
+ ones): 01 the tape (D0 out and in, the only sound), 04-07 the keyboard PPI with its address inverted
+ (07 is port A), 40-4F the page of the RAM disk (the first 0 bit of the byte: page 1..8, FF the main
+ memory), A0-A3 the PPI of the ROM disk (port A reads byte { PC, PB }). The RAM disk (Emu80
+ Ut88AddrSpaceMapper) takes the cycles of the stack (D2 of the status): 8 pages of 64 KB.
 
  The VG75 (k580vg75) and the VT57 (k580vt57) come from Apogee_MiSTer and run at the native timing: the
  points at 8 MHz (40 / 5), the DMA on the F2 enable of the CPU, which it holds (HOLD / HLDA) while it reads
@@ -33,11 +42,14 @@
    100000  the Monitor of the RK86 (2 KB, F800-FFFF)
    100800  the Monitor of the Mikrosha (2 KB, F800-FFFF)
    101000  the ROM of the Apogey (4 KB, F000-FFFF)
-   200000  the ROM disk of the Apogey (512 KB, FL slot 2)
+   102000  the Monitor of the Mikro-80 (2 KB, F800-FFFF)
+   102800  the Monitor of the RK type of the Mikro-80
+   200000  the ROM disk (FL slot 2): the Apogey up to 512 KB, the Mikro-80 64 KB
+   280000  the RAM disk of the Mikro-80, 8 x 64 KB
    300000  the frame buffer, 512 x 300 x 4 bits
- The fonts (the character generators of the VG75, 2 KB each: the RK86, the Mikrosha, the Apogey) are
- a block RAM of 8 KB, written by the ROM loader at 1F0000, 1F0800, 1F1000, inverted: the fonts of
- Emu80 have a point as 0. The ROMs arrive by the ROM loader of the mcu; the machine is in reset while they load.
+ The fonts (the character generators, 2 KB each: the RK86, the Mikrosha, the Apogey, the Mikro-80) are
+ a block RAM of 8 KB, written by the ROM loader at 1F0000, 1F0800, 1F1000, 1F1800, inverted: the fonts
+ of Emu80 have a point as 0. The ROMs arrive by the ROM loader of the mcu; the machine is in reset while they load.
 
  After reset the Monitor answers every read (its first bytes are a jump to F836), until the first read
  at 8000-FFFF, as the startup flip-flop of Apogee_MiSTer.
@@ -95,13 +107,19 @@ wire run_reset = reset | rom_active | file_active;
 wire [15:0] a;
 wire [7:0] cpu_do;
 reg [7:0] cpu_di;
-wire mem_rd, mem_wr, fetch, inte, ce_f2;
+wire mem_rd, mem_wr, fetch, inte, ce_f2, io, stack;
+wire sram_we;
 wire hrq, hlda;
+
+wire m_mk = model == 3'd1;
+wire m_ap = model == 3'd2;
+wire m_80 = model == 3'd4 || model == 3'd5;
+wire m_rk = !m_mk && !m_ap && !m_80;
 
 rk_cpu cpu (
 	.clk(clk),
 	.reset(run_reset),
-	.fast(1'b0),
+	.fast(m_80),
 	.turbo(turbo),
 	.hold(hrq),
 	.hlda(hlda),
@@ -112,15 +130,14 @@ rk_cpu cpu (
 	.mem_rd(mem_rd),
 	.mem_wr(mem_wr),
 	.fetch(fetch),
+	.io(io),
+	.stack(stack),
 	.inte(inte),
 	.ce_f2(ce_f2)
 );
 
-wire m_mk = model == 3'd1;
-wire m_ap = model == 3'd2;
-wire m_rk = !m_mk && !m_ap;
-
-assign beep = m_rk & inte;
+reg tape01 = 1'b0;            // the tape register of the Mikro-80 (port 01)
+assign beep = m_rk & inte | m_80 & tape01;
 
 reg wr_d = 1'b0;
 always @(posedge clk)
@@ -141,37 +158,59 @@ wire ap_io = a[15:10] == 6'b111011;               // EC00-EFFF of the Apogey
 // the RK86: 8000 PPI 1, A000 PPI 2, C000 VG75, E000-FFFF writes the DMA, F800 the Monitor
 // the Mikrosha: C000 PPI 1, C800 PPI 2, D000 VG75, D800 8253, F800 the Monitor and the DMA
 // the Apogey: EC00 8253, ED00 PPI 1, EE00 PPI 2, EF00 VG75, F000 the ROM and the DMA
-wire sel_ppi1 = m_mk ? a[15:11] == 5'b11000 : m_ap ? ap_io && a[9:8] == 2'd1 : a[15:13] == 3'b100;
-wire sel_ppi2 = m_mk ? a[15:11] == 5'b11001 : m_ap ? ap_io && a[9:8] == 2'd2 : a[15:13] == 3'b101;
-wire sel_crt = m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 : a[15:13] == 3'b110;
+// the Mikro-80: ports 01 the tape, 04-07 PPI 1, 40-4F the RAM disk page, A0-A3 PPI 2; memory otherwise
+wire m80_io = m_80 && io;
+wire m80_mem = m_80 && !io;
+reg [3:0] rpage = 4'd0;       // the RAM disk of the Mikro-80: 0 the main memory, 1..8 its pages
+wire sel_rpg = m80_mem && stack && rpage != 4'd0;
+wire sel_tape = m80_io && a[7:0] == 8'h01;
+wire sel_page = m80_io && a[7:4] == 4'h4;
+wire sel_ppi1 = m_80 ? m80_io && a[7:2] == 6'b000001 : m_mk ? a[15:11] == 5'b11000 :
+                m_ap ? ap_io && a[9:8] == 2'd1 : a[15:13] == 3'b100;
+wire sel_ppi2 = m_80 ? m80_io && a[7:2] == 6'b101000 : m_mk ? a[15:11] == 5'b11001 :
+                m_ap ? ap_io && a[9:8] == 2'd2 : a[15:13] == 3'b101;
+wire sel_crt = m_80 ? 1'b0 : m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 : a[15:13] == 3'b110;
 wire sel_pit = m_mk ? a[15:11] == 5'b11011 : m_ap ? ap_io && a[9:8] == 2'd0 : 1'b0;
-wire sel_mon = m_ap ? a[15:12] == 4'hF : f800;
-wire sel_dma = m_rk ? a[15:13] == 3'b111 : sel_mon;
-wire sel_rom = startup || (sel_mon && !mem_wr);
-wire sel_ram = m_ap ? a[15:12] != 4'hF && !ap_io : !a[15];
-wire sel_rdisk = m_ap && sel_ppi2 && a[1:0] == 2'd0;   // port A: the ROM disk
+wire sel_mon = m_80 ? m80_mem && f800 : m_ap ? a[15:12] == 4'hF : f800;
+wire sel_dma = m_80 ? 1'b0 : m_rk ? a[15:13] == 3'b111 : sel_mon;
+wire sel_rom = !sel_rpg && (startup || (sel_mon && !mem_wr));
+wire sel_ram = m_80 ? m80_mem && !f800 : m_ap ? a[15:12] != 4'hF && !ap_io : !a[15];
+wire sel_rdisk = (m_ap || m_80) && sel_ppi2 && a[1:0] == 2'd0;   // port A: the ROM disk
 
 // ------------------------------------------------------------------ the PPIs
 wire [7:0] ppi1_do, ppi2_do, ppi1_pc, ppi1_pa, ppi1_pb, ppi2_pb, ppi2_pc;
 wire ppi2_pb_in;
 
 wire [7:0] kb_scan, kb_ret;
-wire [3:0] kb_pc_hi;
+wire [3:0] kb_pc_hi, kb_pc_lo;
 
 rk_ppi ppi1 (
-	.clk(clk), .reset(run_reset), .a(a[1:0]), .wr(wr_p & sel_ppi1), .din(cpu_do), .dout(ppi1_do),
-	.pa_i(m_mk ? kb_ret : 8'hFF), .pb_i(m_mk ? 8'hFF : kb_ret), .pc_i({ kb_pc_hi[3:1], tape_in, 4'hF }),
+	.clk(clk), .reset(run_reset), .a(m_80 ? ~a[1:0] : a[1:0]), .wr(wr_p & sel_ppi1), .din(cpu_do), .dout(ppi1_do),
+	.pa_i(m_mk ? kb_ret : 8'hFF), .pb_i(m_mk ? 8'hFF : kb_ret),
+	.pc_i(m_80 ? { 3'b111, tape_in, kb_pc_lo } : { kb_pc_hi[3:1], tape_in, 4'hF }),
 	.pa_in(), .pb_in(), .pcl_in(),
 	.pa_o(ppi1_pa), .pb_o(ppi1_pb), .pc_o(ppi1_pc)
 );
 assign kb_scan = m_mk ? ppi1_pb : ppi1_pa;
 
 rk_kbd kbd (
-	.clk(clk), .reset(reset), .ms7007(1'b0), .mikrosha(m_mk),
+	.clk(clk), .reset(reset), .ms7007(1'b0), .mikrosha(m_mk), .mikro80(m_80),
 	.scancode(kb_scancode), .scancode_upd(kb_scancode_upd), .joy(joy),
-	.scan(kb_scan), .ret(kb_ret), .pc_hi(kb_pc_hi)
+	.scan(kb_scan), .ret(kb_ret), .pc_hi(kb_pc_hi), .pc_lo(kb_pc_lo)
 );
-assign tape_out = ppi1_pc[0];
+assign tape_out = m_80 ? tape01 : ppi1_pc[0];
+
+// the tape register and the RAM disk page of the Mikro-80
+always @(posedge clk)
+	if (run_reset) begin
+		tape01 <= 1'b0;
+		rpage <= 4'd0;
+	end
+	else if (wr_p && sel_tape)
+		tape01 <= cpu_do[0];
+	else if (wr_p && sel_page)
+		rpage <= cpu_do == 8'hFF ? 4'd0 : !cpu_do[0] ? 4'd1 : !cpu_do[1] ? 4'd2 : !cpu_do[2] ? 4'd3 :
+		         !cpu_do[3] ? 4'd4 : !cpu_do[4] ? 4'd5 : !cpu_do[5] ? 4'd6 : !cpu_do[6] ? 4'd7 : 4'd8;
 
 rk_ppi ppi2 (
 	.clk(clk), .reset(run_reset), .a(a[1:0]), .wr(wr_p & sel_ppi2), .din(cpu_do), .dout(ppi2_do),
@@ -190,7 +229,8 @@ always @(posedge clk) begin
 	else if (ppi2_pc[7] && !pc7_d)
 		rd_bank <= ppi2_pb[3:0];
 end
-wire [18:0] rd_addr = { rd_bank, ppi2_pc[6:0], ppi2_pb };
+// the Mikro-80: { PC, PB }
+wire [18:0] rd_addr = m_80 ? { 3'd0, ppi2_pc, ppi2_pb } : { rd_bank, ppi2_pc[6:0], ppi2_pb };
 
 // the font set: PB7 of PPI 2 of the Mikrosha (0 while the port is an input), INTE of the Apogey
 wire charset = m_mk ? !ppi2_pb_in && ppi2_pb[7] : m_ap ? inte : 1'b0;
@@ -251,8 +291,8 @@ wire [15:0] dma_addr;
 wire vid_drq, vid_dack;
 wire [3:0] dack;
 wire [7:0] crt_do;
-wire pix, hilight, hblank, vblank, hrtc, vrtc;
-wire [1:0] gattr;
+wire vg_pix, vg_hilight, vg_hblank, vg_vblank, hrtc, vrtc;
+wire [1:0] vg_gattr;
 wire [10:0] font_addr;
 wire [7:0] sram_do;
 
@@ -280,16 +320,32 @@ assign vid_dack = dack[2];
 // the fonts: 2 KB of each model, written by the ROM loader at 1F0000
 reg [7:0] font [0:8191];
 reg [7:0] font_q = 8'd0;
-wire [1:0] font_sel = m_mk ? 2'd1 : m_ap ? 2'd2 : 2'd0;
+wire [1:0] font_sel = m_80 ? 2'd3 : m_mk ? 2'd1 : m_ap ? 2'd2 : 2'd0;
+wire [9:0] m80_font_addr;
 always @(posedge clk) begin
 	if (rom_wr && rom_addr[21:13] == 9'h0F8)     // 1F0000-1F1FFF
 		font[rom_addr[12:0]] <= ~rom_data;   // the fonts of Emu80 are stored inverted (a point is 0)
-	font_q <= font[{ font_sel, font_addr }];
+	font_q <= font[{ font_sel, m_80 ? { 1'b0, m80_font_addr } : font_addr }];
 end
+
+// the Mikro-80: its text screen as the stream of points
+wire m80_pix, m80_hb, m80_vb;
+rk_m80video m80video (
+	.clk(clk),
+	.ce_pix(ce_pix),
+	.vram_we(sram_we && m80_mem && !sel_rpg && a[15:12] == 4'hE),
+	.vram_a(a[11:0]),
+	.vram_d(cpu_do),
+	.font_addr(m80_font_addr),
+	.font_q(font_q),
+	.pix(m80_pix),
+	.hblank(m80_hb),
+	.vblank(m80_vb)
+);
 
 k580vg75 crt (
 	.clk_sys(clk),
-	.reset(run_reset),
+	.reset(run_reset | m_80),
 	.ce_pix(ce_pix),
 	.iaddr(a[0]),
 	.idata(hlda ? sram_do : cpu_do),
@@ -301,11 +357,11 @@ k580vg75 crt (
 	.irq(),
 	.vrtc(vrtc),
 	.hrtc(hrtc),
-	.vblank(vblank),
-	.hblank(hblank),
-	.pix(pix),
-	.hilight(hilight),
-	.gattr(gattr),
+	.vblank(vg_vblank),
+	.hblank(vg_hblank),
+	.pix(vg_pix),
+	.hilight(vg_hilight),
+	.gattr(vg_gattr),
 	.charset(charset),
 	.scr_shift(5'd0),
 	.font_addr(font_addr),
@@ -313,6 +369,12 @@ k580vg75 crt (
 );
 
 // ------------------------------------------------------------------ the frame buffer (write side)
+// the points: of the VG75, or of the screen of the Mikro-80
+wire pix = m_80 ? m80_pix : vg_pix;
+wire hilight = m_80 ? 1'b0 : vg_hilight;
+wire [1:0] gattr = m_80 ? 2'b00 : vg_gattr;
+wire hblank = m_80 ? m80_hb : vg_hblank;
+wire vblank = m_80 ? m80_vb : vg_vblank;
 reg hb_d = 1'b1, vb_d = 1'b1;
 reg [9:0] fx = 10'd0;
 reg [8:0] fy = 9'd0;
@@ -362,10 +424,12 @@ end
 // the ROM: 100000 + (a - F800) of the RK86, 100800 + .. of the Mikrosha, 101000 + (a - F000) of the
 // Apogey; at startup its upper 2 KB
 wire [21:0] mon_off = m_ap ? 22'h101000 | { 10'd0, a[11] | startup, a[10:0] } :
+                      model == 3'd5 ? 22'h102800 | { 11'd0, a[10:0] } : m_80 ? 22'h102000 | { 11'd0, a[10:0] } :
                       m_mk ? 22'h100800 | { 11'd0, a[10:0] } : 22'h100000 | { 11'd0, a[10:0] };
-wire [21:0] sram_addr = hlda ? { 6'd0, dma_addr } : sel_rom ? mon_off :
+wire [2:0] rpage_n = rpage[2:0] - 3'd1;   // pages 1..8 as 0..7
+wire [21:0] sram_addr = hlda ? { 6'd0, dma_addr } : sel_rpg ? { 3'b101, rpage_n, a } : sel_rom ? mon_off :
                         sel_rdisk ? 22'h200000 | { 3'd0, rd_addr } : { 6'd0, a };
-wire sram_we = mem_wr && sel_ram && !hlda;
+assign sram_we = mem_wr && (sel_ram || sel_rpg) && !hlda;
 
 // ------------------------------------------------------------------ autorun of a tape file
 wire [15:0] rk_start;
@@ -410,8 +474,10 @@ always @* begin
 	if (inj == 2'd1) cpu_di = 8'hC3;
 	else if (inj == 2'd2) cpu_di = rk_start[7:0];
 	else if (inj == 2'd3) cpu_di = rk_start[15:8];
+	else if (sel_rpg) cpu_di = sram_do;
 	else if (sel_rom) cpu_di = sram_do;
 	else if (sel_ram) cpu_di = sram_do;
+	else if (sel_tape) cpu_di = { 7'd0, tape_in };
 	else if (sel_rdisk) cpu_di = sram_do;
 	else if (sel_pit) cpu_di = pit_do;
 	else if (sel_ppi1) cpu_di = ppi1_do;

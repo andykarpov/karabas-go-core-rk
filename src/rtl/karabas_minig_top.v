@@ -13,7 +13,7 @@
  pal is 0 (clk_pix = 40 MHz, the twin of clk_sys).
 
  Soft switches (the index of the item in the osd of core.json, file items included):
-   0 Tape file (FL 1)   1 ROM disk (FL 2)   2 -   3 Model (RK86 / Mikrosha / Apogey / Partner / Mikro-80)
+   0 Tape file (FL 1)   1 ROM disk (FL 2)   2 -   3 Model (RK86 / Mikrosha / Apogey / Partner / Mikro-80 / Mikro-80RK)
    4 CPU speed   5 Color   6 Autorun   7 Reset
  A change of the model resets the machine.
 */
