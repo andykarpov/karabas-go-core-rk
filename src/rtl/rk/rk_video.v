@@ -10,7 +10,8 @@
 
  The buffer: 512 x 300 points of 4 bits (point, highlight, the two colour bits of the Apogey), at word
  FB_WORD of the SRAM, 128 words a line, four points a word (the first in the low nibble). On the screen
- a line of the buffer is two lines (600), and two points are three pixels (768, x 16..783).
+ a line of the buffer is two lines (600), and two points are three pixels (768, x 16..783). center_x / center_y
+ move the picture to the middle of that area.
 
  A line of the buffer is fetched into one half of a line buffer (block RAM) during the output line
  before its first one (128 words through the video port of rk_sram, some 800 clocks of 1056), the
@@ -27,6 +28,8 @@ module rk_video #(
 	input wire clk,
 	input wire color,
 	input wire partner,   // the points of the Partner: { 0, p, p, p } the text, { 1, R, G, B } the MCPG
+	input wire [6:0] center_x,  // the picture moves right by cells of 4 points (6 pixels), down by lines of
+	input wire [7:0] center_y,  // the buffer (2 lines), to sit in the middle; what leaves the 768 x 600 is dark
 
 	output reg vid_req = 1'b0,
 	output reg [20:0] vid_addr = 21'd0,
@@ -45,10 +48,16 @@ localparam X0 = 16;          // the first pixel of the picture
 
 reg [10:0] hcnt = 11'd0;
 reg [9:0] vcnt = 10'd0;
+reg [6:0] xs = 7'd0;          // center_x / center_y, taken between two frames
+reg [7:0] ys = 8'd0;
 always @(posedge clk)
 	if (hcnt == H_TOTAL - 1) begin
 		hcnt <= 11'd0;
 		vcnt <= (vcnt == V_TOTAL - 1) ? 10'd0 : vcnt + 10'd1;
+		if (vcnt == V_VISIBLE) begin
+			xs <= center_x;
+			ys <= center_y;
+		end
 	end
 	else
 		hcnt <= hcnt + 11'd1;
@@ -69,7 +78,7 @@ always @(posedge clk) begin
 		busy <= 1'b1;
 		waiting <= 1'b0;
 		fcol <= 8'd0;
-		fline <= vnext[9:1];
+		fline <= vnext[9:1] - { 1'b0, ys };
 	end
 	else if (busy && !waiting) begin
 		if (fcol == 8'd128)
@@ -101,16 +110,20 @@ end
 // ------------------------------------------------------------------ the picture
 // stage 0 (hcnt = h): the cell of pixel h (x = h - X0: cell x / 6, its point 0 0 1 2 2 3 by x % 6)
 // addresses the line buffer; stage 1: its word; stage 2: rgb, with hs / vs / de of h delayed as much
-wire in_y = vcnt < V_VISIBLE;
+wire [10:0] y0 = { 2'b00, ys, 1'b0 };   // the first line of the picture
+wire [10:0] x0 = X0 + { 2'b00, xs, 2'b00 } + { 3'b000, xs, 1'b0 };   // its first pixel (6 a cell)
+wire in_y = vcnt < V_VISIBLE && { 1'b0, vcnt } >= y0;
 reg [2:0] ph = 3'd0;
 reg [6:0] pcell = 7'd0;
 reg run = 1'b0;
 always @(posedge clk) begin
-	if (hcnt == X0 - 1) begin
+	if (hcnt == x0 - 11'd1) begin
 		run <= in_y;
 		ph <= 3'd0;
 		pcell <= 7'd0;
 	end
+	else if (run && hcnt == X0 + 11'd767)   // the end of the area
+		run <= 1'b0;
 	else if (run) begin
 		if (ph == 3'd5) begin
 			ph <= 3'd0;
@@ -129,7 +142,7 @@ reg vis1 = 1'b0, vis2 = 1'b0;
 reg de1 = 1'b0, hs1 = 1'b0, vs1 = 1'b0;
 always @(posedge clk) begin
 	// stage 0 -> 1
-	buf_ra <= { vcnt[1], pcell };
+	buf_ra <= { vcnt[1] ^ ys[0], pcell };
 	pt1 <= (ph == 3'd0 || ph == 3'd1) ? 2'd0 : (ph == 3'd2) ? 2'd1 : (ph == 3'd3 || ph == 3'd4) ? 2'd2 : 2'd3;
 	vis1 <= run;
 	de1 <= hcnt < H_VISIBLE && vcnt < V_VISIBLE;

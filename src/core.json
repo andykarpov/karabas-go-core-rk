@@ -1,7 +1,7 @@
 {
     "id": "rk",
     "name": "Radio-86RK family",
-    "build": "26110807",
+    "build": "26110808",
     "visible": true,
     "type": "osd",
     "order": 16,
