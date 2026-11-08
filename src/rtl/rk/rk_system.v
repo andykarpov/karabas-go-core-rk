@@ -227,7 +227,17 @@ wire [15:0] v0 = pit_out0 ? 16'h1000 : 16'h0000;
 wire [15:0] v1 = pit_out1 ? 16'h1000 : 16'h0000;
 wire [15:0] v2 = pit_out2 ? 16'h1000 : 16'h0000;
 wire [15:0] snd_pit = m_ap ? v0 + v1 + v2 : m_mk ? (ppi1_pc[1] ? v2 : 16'h0000) : 16'h0000;
-assign audio = (beep ? 16'h1800 : 16'h0000) + (tape_out ? 16'h0400 : 16'h0000) + snd_pit;
+wire [15:0] mix = (beep ? 16'h1800 : 16'h0000) + (tape_out ? 16'h0400 : 16'h0000) + snd_pit;
+
+// a low-pass of two first-order stages of about 12 kHz (40 MHz / (2 pi 512)) before the 48 kHz samples:
+// programs of the Apogey drive channels of the 8253 at hundreds of kHz (a count of 2, for silence or a
+// level), which sampled bare folds into a squeal; Emu80 averages the output of the 8253 the same way
+reg [24:0] lp1 = 25'd0, lp2 = 25'd0;
+always @(posedge clk) begin
+	lp1 <= lp1 + { 9'd0, mix } - { 9'd0, lp1[24:9] };
+	lp2 <= lp2 + { 9'd0, lp1[24:9] } - { 9'd0, lp2[24:9] };
+end
+assign audio = lp2[24:9];
 
 // ------------------------------------------------------------------ the VG75 and its DMA
 reg [2:0] pix_div = 3'd0;

@@ -9,6 +9,7 @@
 // writes the frame buffer (512 x 300, 4 bits a point at 300000 of the SRAM) as an image; --frame
 // captures the next whole frame of the video output (800 x 600). --expect checks a byte of the SRAM (a
 // byte address of rk_sram) at the end; --dump prints bytes of the SRAM. TRACE=N prints N CPU reads.
+// --wav OUT writes the audio sampled at 48 kHz (every 833 clocks), mono 16-bit.
 // --model: 0 the RK86, 1 the Mikrosha, 2 the Apogey; --switch MS:N changes it at that time under a reset of
 // 255 clocks, as the top does. "sound edges" counts the changes of the audio.
 #include <cstdio>
@@ -53,7 +54,8 @@ int main(int argc, char **argv) {
 	std::vector<std::pair<uint32_t, int>> expects, dumps;
 	std::vector<Ev> evs;
 	int ms = 1000, model = 0;
-	const char *ppm = nullptr, *frame = nullptr;
+	const char *ppm = nullptr, *frame = nullptr, *wav = nullptr;
+	std::vector<int16_t> pcm;
 	bool turbo = false, color = false, autorun = true;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--rom") || !strcmp(argv[i], "--expect")) {
@@ -88,6 +90,7 @@ int main(int argc, char **argv) {
 		else if (!strcmp(argv[i], "--noauto")) autorun = false;
 		else if (!strcmp(argv[i], "--ms")) ms = atoi(argv[++i]);
 		else if (!strcmp(argv[i], "--ppm")) ppm = argv[++i];
+		else if (!strcmp(argv[i], "--wav")) wav = argv[++i];
 		else if (!strcmp(argv[i], "--frame")) frame = argv[++i];
 		else { fprintf(stderr, "bad option %s\n", argv[i]); return 2; }
 	}
@@ -142,6 +145,7 @@ int main(int argc, char **argv) {
 		prev = top->beep;
 		if (top->audio != psnd) snds++;
 		psnd = top->audio;
+		if (wav && (clks - t0) % 833 == 0) pcm.push_back((int16_t)(top->audio >> 1));
 		if (trace > 0 && top->dbg_rd && !prd) { printf("rd %04x\n", top->dbg_a); trace--; }
 		prd = top->dbg_rd;
 	}
@@ -165,6 +169,16 @@ int main(int argc, char **argv) {
 	for (auto &e : expects) {
 		uint8_t v = peek(e.first);
 		if (v != e.second) { printf("expect %06x: %02x, not %02x\n", e.first, v, e.second); err = 1; }
+	}
+	if (wav) {
+		FILE *f = fopen(wav, "wb");
+		uint32_t n = pcm.size() * 2, r = 48000, br = 96000, h = 16, sz = 36 + n;
+		uint16_t pcmf = 1, ch = 1, al = 2, bits = 16;
+		fwrite("RIFF", 1, 4, f); fwrite(&sz, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f); fwrite(&h, 4, 1, f);
+		fwrite(&pcmf, 2, 1, f); fwrite(&ch, 2, 1, f); fwrite(&r, 4, 1, f); fwrite(&br, 4, 1, f);
+		fwrite(&al, 2, 1, f); fwrite(&bits, 2, 1, f); fwrite("data", 1, 4, f); fwrite(&n, 4, 1, f);
+		fwrite(pcm.data(), 2, pcm.size(), f);
+		fclose(f);
 	}
 	if (ppm) {
 		FILE *f = fopen(ppm, "wb");
