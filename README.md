@@ -18,7 +18,7 @@ old [karabas-go-core-rk86](https://github.com/andykarpov/karabas-go-core-rk86).
 
 The core file is `src/rk.kg`.
 
-**State:** build 26110807. The Radio-86RK (with SDOS), the Mikrosha, the Apogey, the Partner 01.01 and
+**State:** build 26110808. The Radio-86RK (with SDOS), the Mikrosha, the Apogey, the Partner 01.01 and
 the Mikro-80 run on the Mini G; the Go and the Mini are built, not tried on a board yet (see
 [What is tested](#what-is-tested)). The plan and the next options are in
 [docs/PLAN.md](docs/PLAN.md) (Russian).
@@ -65,7 +65,8 @@ with the Monitor of the RK type (Mikro-80RK) it runs a part of the RK software.
 - **Video:** the KR580VG75 and its DMA KR580VT57 at their native timing, as on the real machines (the
   DMA takes cycles from the CPU, so programs run at their true speed). The picture goes into a frame
   buffer in the SRAM of the board and comes out as **800 × 600 at 60 Hz**, whatever a program sets the
-  VG75 to: there is no mode a monitor cannot take. The Mikro-80 text screen goes into the same buffer.
+  VG75 to: there is no mode a monitor cannot take. The picture is centred by the raster the program
+  has set. The Mikro-80 text screen goes into the same buffer.
 - **Colour** of the Apogey (the attributes of the VG75) and its graphic font (switched by INTE), the
   second font of the Mikrosha, the 8 fonts of the Partner and the colour graphics of its **MCPG**
   module (4 points of 8 colours per character over the text).
@@ -271,8 +272,6 @@ On the Mini G with an HDMI capture (picture and sound):
 
 ## Known issues
 
-- The picture of the models with the VG75 sits at the top left of the screen: the raster their
-  Monitors set is smaller than the frame buffer window. Centring is in the backlog.
 - The Mikro-80 shows rows of 9 lines (8 + 1 dark) instead of 10, so that its 32 rows fit the frame
   buffer: the gaps between pseudo-graphic rows are one line thinner.
 

@@ -40,8 +40,12 @@ module tb_boot (
 	input wire [21:0] dbg_addr,
 	output wire [7:0] dbg_q,
 	output wire [15:0] dbg_a,
-	output wire dbg_rd
+	output wire dbg_rd,
+	output wire [9:0] dbg_w,
+	output wire [8:0] dbg_h
 );
+assign dbg_w = sys.fb_w;
+assign dbg_h = sys.fb_h;
 assign dbg_a = sys.a;
 assign dbg_rd = sys.mem_rd;
 

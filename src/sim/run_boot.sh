@@ -2,7 +2,7 @@
 # The machine in simulation. Builds sim_boot (verilator) into src/sim/build, runs it from src/; the
 # frame buffer pictures are in build/*.ppm.
 #  1. the Radio-86RK, its Monitor: the frame buffer shows its first screen (not empty), and the video
-#     output (800 x 600) is not empty.
+#     output (800 x 600) is not empty, with the picture in the middle (the raster centred).
 #  2. the same in turbo.
 #  3. keys (held 100 ms): DF800,F81F + Enter dumps the Monitor ROM, the screen changes, the keys click.
 #  4. a tape file (mkrk.py: writes 5A at 1000) loads through the FL port and starts by itself after the Monitor
@@ -41,6 +41,12 @@ err=0
 for f in rk86 rk86_frame; do
 	[ "$(tail -c +16 "$B/$f.ppm" | tr -d '\000' | wc -c)" -gt 0 ] || { echo "$f: empty"; err=1; }
 done
+# the picture is in the middle: the raster of the RK86 is 389 x 280, so 15 cells (90 pixels) right and 10 lines (20) down
+python3 -c "
+import sys
+d = open(sys.argv[1], 'rb').read().split(b'\n', 3)[3]
+lit = [(i // 3 % 800, i // 3 // 800) for i in range(0, len(d), 3) if d[i] or d[i + 1] or d[i + 2]]
+sys.exit((min(x for x, y in lit), min(y for x, y in lit)) != (115, 44))" "$B/rk86_frame.ppm" || { echo "the picture is not in the middle"; err=1; }
 keys() { t=$1; shift; for k in "$@"; do printf -- '--key %d:%s --key %d:F0,%s ' $t $k $((t+100)) $k; t=$((t+300)); done; }
 "$SIM" $ROMS --ms 5200 $(keys 600 23 2B 3E 45 45 41 2B 3E 16 2B 5A) --ppm "$B/rk86_key.ppm" | tee "$B/key.txt" || err=1
 cmp -s "$B/rk86.ppm" "$B/rk86_key.ppm" && { echo "the keys changed nothing"; err=1; }

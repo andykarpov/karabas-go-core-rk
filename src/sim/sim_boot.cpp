@@ -249,6 +249,7 @@ int main(int argc, char **argv) {
 		}
 	static const char *names[] = { "RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80", "Mikro-80RK", "?", "?" };
 	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model & 7], turbo ? "turbo" : model >= 3 ? "2MHz" : "1.78MHz", ms, beeps, snds, sum, lit);
+	printf("raster %d x %d\n", top->dbg_w, top->dbg_h);
 	if (has_sd) printf("sd reads %d writes %d\n", disk_reads, disk_writes);
 	for (auto &d : dumps) {
 		for (int i = 0; i < d.second; i++) { if (i % 32 == 0) printf("\n%06x:", d.first + i); printf(" %02x", peek(d.first + i)); }

@@ -536,6 +536,46 @@ wire [3:0] fb_pt = m_pt ? (mc_show ? { 1'b1, mc_rgb } : { 1'b0, pix, pix, pix })
 wire hblank = m_80 ? m80_hb : m_pt ? hrtc : vg_hblank;
 wire vblank = m_80 ? m80_vb : m_pt ? vrtc : vg_vblank;
 reg hb_d = 1'b1, vb_d = 1'b1;
+// the size of the raster: the points of the last active line, the active lines of the last frame
+reg [9:0] w_cnt = 10'd0, fb_w = 10'd0;
+reg [8:0] h_cnt = 9'd0, fb_h = 9'd0;
+// the picture in the middle of the window: where rk_video puts it, in cells of 4 points and lines of the
+// buffer, from a raster that has stayed the same for 8 frames (a reset or a program in the middle of
+// setting the VG75 moves nothing)
+wire [9:0] w_lim = fb_w > 10'd512 ? 10'd512 : fb_w;
+wire [8:0] h_lim = h_cnt > 9'd300 ? 9'd300 : h_cnt;
+wire [9:0] w_free = 10'd512 - w_lim;
+wire [8:0] h_free = 9'd300 - h_lim;
+reg [9:0] w_p = 10'd0;
+reg [8:0] h_p = 9'd0;
+reg [2:0] same = 3'd0;
+reg [6:0] center_x = 7'd0;
+reg [7:0] center_y = 8'd0;
+always @(posedge clk)
+	if (ce_pix) begin
+		if (hb_d && !hblank)
+			w_cnt <= 10'd0;
+		else if (!hblank && w_cnt != 10'd1023)
+			w_cnt <= w_cnt + 10'd1;
+		if (!hb_d && hblank && !vblank) begin
+			fb_w <= w_cnt;
+			h_cnt <= h_cnt + 9'd1;
+		end
+		if (!vb_d && vblank) begin
+			fb_h <= h_cnt;
+			h_cnt <= 9'd0;
+			w_p <= fb_w;
+			h_p <= h_cnt;
+			if (fb_w != w_p || h_cnt != h_p)
+				same <= 3'd0;
+			else if (same != 3'd7)
+				same <= same + 3'd1;
+			else begin
+				center_x <= w_free[9:3];
+				center_y <= h_free[8:1];
+			end
+		end
+	end
 reg [9:0] fx = 10'd0;
 reg [8:0] fy = 9'd0;
 reg [3:0] lo_nib = 4'd0;
@@ -760,6 +800,8 @@ rk_video video (
 	.clk(clk),
 	.color(color && m_ap),
 	.partner(m_pt),
+	.center_x(center_x),
+	.center_y(center_y),
 	.vid_req(vid_req),
 	.vid_addr(vid_addr),
 	.vid_dout(vid_dout),
