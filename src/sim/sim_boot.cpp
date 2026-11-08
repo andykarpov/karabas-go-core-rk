@@ -1,6 +1,6 @@
 // sim_boot: tb_boot (rk_system + SRAM model) under verilator (after the sim_boot of core-specialist).
 //
-//   sim_boot --rom FILE:ADDR ... [--turbo] [--color] [--noauto] [--ms N] [--file MS:SLOT:FILE ...]
+//   sim_boot --rom FILE:ADDR ... [--model N] [--turbo] [--color] [--noauto] [--ms N] [--file MS:SLOT:FILE ...]
 //            [--key MS:B,B,.. ...] [--ppm OUT] [--frame OUT] [--expect ADDR:VAL ...] [--dump ADDR:N]
 //
 // The ROMs go in through the ROM loader (one byte every 12 clocks), then the machine runs N ms of its
@@ -9,6 +9,7 @@
 // writes the frame buffer (512 x 300, 4 bits a point at 300000 of the SRAM) as an image; --frame
 // captures the next whole frame of the video output (800 x 600). --expect checks a byte of the SRAM (a
 // byte address of rk_sram) at the end; --dump prints bytes of the SRAM. TRACE=N prints N CPU reads.
+// --model: 0 the RK86, 1 the Mikrosha, 2 the Apogey. "sound edges" counts the changes of the audio.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -50,7 +51,7 @@ int main(int argc, char **argv) {
 	std::vector<std::pair<std::string, uint32_t>> roms;
 	std::vector<std::pair<uint32_t, int>> expects, dumps;
 	std::vector<Ev> evs;
-	int ms = 1000;
+	int ms = 1000, model = 0;
 	const char *ppm = nullptr, *frame = nullptr;
 	bool turbo = false, color = false, autorun = true;
 	for (int i = 1; i < argc; i++) {
@@ -76,6 +77,7 @@ int main(int argc, char **argv) {
 			while (*p) { e.keys.push_back(strtoul(p, (char **)&p, 16)); if (*p == ',') p++; }
 			evs.push_back(e);
 		}
+		else if (!strcmp(argv[i], "--model")) model = atoi(argv[++i]);
 		else if (!strcmp(argv[i], "--turbo")) turbo = true;
 		else if (!strcmp(argv[i], "--color")) color = true;
 		else if (!strcmp(argv[i], "--noauto")) autorun = false;
@@ -84,7 +86,7 @@ int main(int argc, char **argv) {
 		else if (!strcmp(argv[i], "--frame")) frame = argv[++i];
 		else { fprintf(stderr, "bad option %s\n", argv[i]); return 2; }
 	}
-	top->turbo = turbo; top->color = color; top->autorun = autorun;
+	top->turbo = turbo; top->color = color; top->autorun = autorun; top->model = model;
 	top->reset = 1; top->rom_active = 0; top->rom_wr = 0; top->file_active = 0; top->file_wr = 0;
 	top->kb_scancode = 0; top->kb_scancode_upd = 0;
 	for (int i = 0; i < 400; i++) tick();
@@ -101,7 +103,7 @@ int main(int argc, char **argv) {
 	for (int i = 0; i < 40; i++) tick();
 	top->rom_active = 0;
 	uint64_t t0 = clks, end = t0 + (uint64_t)ms * 40000;
-	int beeps = 0, prev = 0, prd = 0;
+	int beeps = 0, prev = 0, prd = 0, snds = 0, psnd = 0;
 	int trace = getenv("TRACE") ? atoi(getenv("TRACE")) : 0;
 	while (clks < end) {
 		for (auto &e : evs) {
@@ -128,6 +130,8 @@ int main(int argc, char **argv) {
 		tick();
 		if (top->beep != prev) beeps++;
 		prev = top->beep;
+		if (top->audio != psnd) snds++;
+		psnd = top->audio;
 		if (trace > 0 && top->dbg_rd && !prd) { printf("rd %04x\n", top->dbg_a); trace--; }
 		prd = top->dbg_rd;
 	}
@@ -141,7 +145,8 @@ int main(int argc, char **argv) {
 			sum = sum * 31 + b;
 			lit += ((b >> 3) & 1) + ((b >> 7) & 1);
 		}
-	printf("RK86 %s %d ms: beep edges %d frame sum %08x lit %u\n", turbo ? "turbo" : "1.78MHz", ms, beeps, sum, lit);
+	static const char *names[] = { "RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80" };
+	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model % 5], turbo ? "turbo" : "1.78MHz", ms, beeps, snds, sum, lit);
 	for (auto &d : dumps) {
 		for (int i = 0; i < d.second; i++) { if (i % 32 == 0) printf("\n%06x:", d.first + i); printf(" %02x", peek(d.first + i)); }
 		printf("\n");
@@ -157,6 +162,9 @@ int main(int argc, char **argv) {
 		for (int i = 0; i < 512 * 300; i++) {
 			uint8_t v = (fb[i] & 8) ? ((fb[i] & 4) ? 255 : 192) : 0;
 			uint8_t p[3] = { v, v, v };
+			if (color && (fb[i] & 8)) {   // the Apogey: R = !hilight, G = !gattr1, B = !gattr0
+				p[0] = (fb[i] & 4) ? 0 : 255; p[1] = (fb[i] & 2) ? 0 : 255; p[2] = (fb[i] & 1) ? 0 : 255;
+			}
 			fwrite(p, 1, 3, f);
 		}
 		fclose(f);

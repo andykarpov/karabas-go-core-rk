@@ -1,20 +1,25 @@
 {
     "id": "rk",
     "name": "Radio-86RK family",
-    "build": "26110801",
+    "build": "26110802",
     "visible": true,
     "type": "osd",
     "order": 16,
     "eeprom_bank": 255,
     "roms": [
     {"filename": "roms/rk86.rom", "address": 1048576},
-    {"filename": "roms/sgr.bin", "address": 2031616}
+    {"filename": "roms/mikrosha.rom", "address": 1050624},
+    {"filename": "roms/apogey.rom", "address": 1052672},
+    {"filename": "roms/sgr.bin", "address": 2031616},
+    {"filename": "roms/sgm.bin", "address": 2033664},
+    {"filename": "roms/sga.bin", "address": 2035712}
     ],
     "boards": {
         "minig": {"bitstream": "karabas_minig.bin"}
     },
     "osd": [
     {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka", "dir": "/rk", "hotkey": "Menu+F2"},
+    {"type": "FL", "name": "ROM disk", "slot": 2, "extensions": ".bin,.rom", "dir": "/rk", "hotkey": "Menu+F3"},
     {"type": "-"},
     {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80"], "default": 0, "hotkey": "Menu+M"},
     {"type": "S", "name": "CPU speed", "options": ["Normal", "Turbo"], "default": 0, "hotkey": "Menu+S"},

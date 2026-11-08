@@ -8,6 +8,7 @@ module tb_boot (
 	input wire turbo,
 	input wire color,
 	input wire autorun,
+	input wire [2:0] model,
 	input wire rom_active,
 	input wire [21:0] rom_addr,
 	input wire [7:0] rom_data,
@@ -24,6 +25,7 @@ module tb_boot (
 	output wire vs,
 	output wire de,
 	output wire beep,
+	output wire [15:0] audio,
 	input wire [21:0] dbg_addr,
 	output wire [7:0] dbg_q,
 	output wire [15:0] dbg_a,
@@ -37,11 +39,11 @@ wire [15:0] MD;
 wire [1:0] MWR_N;
 
 rk_system sys (
-	.clk(clk), .reset(reset), .turbo(turbo), .color(color), .autorun(autorun),
+	.clk(clk), .reset(reset), .turbo(turbo), .color(color), .autorun(autorun), .model(model),
 	.rom_active(rom_active), .rom_addr(rom_addr), .rom_data(rom_data), .rom_wr(rom_wr),
 	.file_active(file_active), .file_slot(file_slot), .file_addr(file_addr), .file_data(file_data), .file_wr(file_wr),
 	.kb_scancode(kb_scancode), .kb_scancode_upd(kb_scancode_upd), .joy(13'd0), .tape_in(1'b1),
-	.beep(beep), .tape_out(),
+	.beep(beep), .tape_out(), .audio(audio),
 	.rgb(rgb), .hs(hs), .vs(vs), .de(de),
 	.MA(MA), .MD(MD), .MWR_N(MWR_N)
 );

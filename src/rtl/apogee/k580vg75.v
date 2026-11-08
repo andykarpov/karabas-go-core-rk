@@ -1,3 +1,4 @@
+`default_nettype wire   // karabas: KF8253 before it in the project leaves none
 // Imported from MiSTer-devel/Apogee_MiSTer (rtl/k580vg75.sv), converted to Verilog by sv2v for
 // karabas-go-core-rk; changes are marked karabas (in the source before the conversion: the font ROM
 // moved out to the ports font_addr / font_data). License: rtl/apogee/LICENSE.TXT (modified BSD).

@@ -21,12 +21,19 @@
  both crossings of the key. Change ms7007 only during reset.
 
  joy: a joystick as keys of either layout: the arrows, A Space, B and Start Enter (VK).
+
+ mikrosha (karabas): the keyboard of the Mikrosha (Emu80 m_KeyMatrixMikrosha). scan is port B of the
+ PPI there and ret its port A. Its matrix is that of the RK86 turned over: a key of row r, column c of
+ the RK86 table is column r, bit c here (the digits, the letters, the punctuation); rows 0 and 1 hold
+ the other keys in another order, and column 7 bit 7 is Backspace (Space is column 0 bit 0). Port C:
+ { SS (Shift), US (Ctrl), RUS/LAT, 1 }.
 */
 
 module rk_kbd (
 	input wire clk,
 	input wire reset,
 	input wire ms7007,
+	input wire mikrosha,
 	input wire [7:0] scancode,
 	input wire scancode_upd,    // toggles with each byte
 	input wire [12:0] joy,      // the joysticks of kg_mcu (both, or-ed): up, down, left, right, start, A, B in bits 1..7
@@ -330,6 +337,20 @@ wire [7:0] ret_rk = ~( (scan[0] ? 8'd0 : col(3'd0)) | (scan[1] ? 8'd0 : col(3'd7
                        (scan[4] ? 8'd0 : col(3'd4)) | (scan[5] ? 8'd0 : col(3'd3)) |
                        (scan[6] ? 8'd0 : col(3'd2)) | (scan[7] ? 8'd0 : col(3'd1)) );
 
+// the Mikrosha: column s, bit b. km keeps the RK86 places: entry e is the row (8 - e) mod 8 of the RK86 table.
+localparam [47:0] MK_R0 = { 6'o76, 6'o74, 6'o01, 6'o72, 6'o71, 6'o70, 6'o02, 6'o17 };  // Space Esc Tab LF CR Clear Left Right, s 0..7
+localparam [47:0] MK_R1 = { 6'o07, 6'o06, 6'o05, 6'o04, 6'o03, 6'o00, 6'o77, 6'o75 };  // Up Down Home F1 .. F5
+function [7:0] mcol;
+	input [2:0] c;
+	mcol = { c == 3'd7 ? kj[6'o73] : kj[{ 3'd1, c }], kj[{ 3'd2, c }], kj[{ 3'd3, c }], kj[{ 3'd4, c }],
+	         kj[{ 3'd5, c }], kj[{ 3'd6, c }], kj[MK_R1[c * 6 +: 6]], kj[MK_R0[c * 6 +: 6]] };
+endfunction
+wire [7:0] ret_mk = ~( (scan[0] ? 8'd0 : mcol(3'd0)) | (scan[1] ? 8'd0 : mcol(3'd1)) |
+                       (scan[2] ? 8'd0 : mcol(3'd2)) | (scan[3] ? 8'd0 : mcol(3'd3)) |
+                       (scan[4] ? 8'd0 : mcol(3'd4)) | (scan[5] ? 8'd0 : mcol(3'd5)) |
+                       (scan[6] ? 8'd0 : mcol(3'd6)) | (scan[7] ? 8'd0 : mcol(3'd7)) );
+wire rk_ss = ~(rk_force ? rk_sh : ss);
+
 // MS7007: a column read gives its rows 0..11; the Orion shift is (5, 9)
 function [11:0] mc;
 	input [2:0] c;
@@ -342,7 +363,7 @@ wire [11:0] ret_ms = ~( (scan[0] ? 12'd0 : mc(3'd0)) | (scan[1] ? 12'd0 : mc(3'd
                         (scan[4] ? 12'd0 : mc(3'd4)) | (scan[5] ? 12'd0 : mc(3'd5)) |
                         (scan[6] ? 12'd0 : mc(3'd6)) | (scan[7] ? 12'd0 : mc(3'd7)) );
 
-assign ret = ms7007 ? ret_ms[7:0] : ret_rk;
-assign pc_hi = ms7007 ? ret_ms[11:8] : { ~rl, ~us, ~(rk_force ? rk_sh : ss), 1'b1 };
+assign ret = ms7007 ? ret_ms[7:0] : mikrosha ? ret_mk : ret_rk;
+assign pc_hi = ms7007 ? ret_ms[11:8] : mikrosha ? { rk_ss, ~us, ~rl, 1'b1 } : { ~rl, ~us, rk_ss, 1'b1 };
 
 endmodule

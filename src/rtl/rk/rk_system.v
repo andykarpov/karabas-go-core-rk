@@ -6,7 +6,17 @@
 
  The Radio-86RK family on one clock of 40 MHz: the processor, the memory map, the ports, the VG75 CRT
  controller with its DMA, the frame buffer, the video output and the SRAM. docs/HARDWARE.md has the maps.
- Phase 1: the Radio-86RK.
+ model: 0 the Radio-86RK, 1 the Mikrosha, 2 the Apogey BK-01 (3 and 4, the Partner and the Mikro-80, are
+ the RK86 for now). Change it only during reset.
+
+ The Mikrosha: the keyboard PPI at C000 with ports A and B swapped (rk_kbd mikrosha), the second PPI
+ at C800 (PB7 the second font), the VG75 at D000, the 8253 at D800 (channel 2 the sound, gated by PC1
+ of the keyboard PPI, its GATE is PC2), the Monitor at F800. The Apogey: RAM to EBFF, the 8253 at EC00
+ (the three channels the sound), the keyboard PPI at ED00 (as the RK86), the PPI of the ROM disk at
+ EE00, the VG75 at EF00, the ROM of 4 KB at F000 (writes there go to the DMA); its font set is INTE,
+ its colour the attributes of the VG75. The ROM disk (Emu80 ApogeyRomDisk, Apogee_MiSTer EXTROM):
+ port A reads byte { bank, PC[6:0], PB } of the disk, the bank is PB[3:0] at the rising edge of PC7.
+ The 8253 is KF8253 (kitune-san, MIT) on 1.78 MHz, not on turbo.
 
  The VG75 (k580vg75) and the VT57 (k580vt57) come from Apogee_MiSTer and run at the native timing: the
  points at 8 MHz (40 / 5), the DMA on the F2 enable of the CPU, which it holds (HOLD / HLDA) while it reads
@@ -21,9 +31,13 @@
  SRAM (a byte address of 22 bits, rk_sram):
    000000  the main RAM, 64 KB
    100000  the Monitor of the RK86 (2 KB, F800-FFFF)
+   100800  the Monitor of the Mikrosha (2 KB, F800-FFFF)
+   101000  the ROM of the Apogey (4 KB, F000-FFFF)
+   200000  the ROM disk of the Apogey (512 KB, FL slot 2)
    300000  the frame buffer, 512 x 300 x 4 bits
- The font (the character generator of the VG75) is a block RAM of 2 KB, written by the ROM loader at
- 1F0000, inverted: the fonts of Emu80 have a point as 0. The ROMs arrive by the ROM loader of the mcu; the machine is in reset while they load.
+ The fonts (the character generators of the VG75, 2 KB each: the RK86, the Mikrosha, the Apogey) are
+ a block RAM of 8 KB, written by the ROM loader at 1F0000, 1F0800, 1F1000, inverted: the fonts of
+ Emu80 have a point as 0. The ROMs arrive by the ROM loader of the mcu; the machine is in reset while they load.
 
  After reset the Monitor answers every read (its first bytes are a jump to F836), until the first read
  at 8000-FFFF, as the startup flip-flop of Apogee_MiSTer.
@@ -39,6 +53,7 @@ module rk_system (
 	input wire turbo,
 	input wire color,
 	input wire autorun,
+	input wire [2:0] model,
 
 	// the ROM loader of the mcu
 	input wire rom_active,
@@ -57,8 +72,9 @@ module rk_system (
 	input wire [12:0] joy,
 	input wire tape_in,           // PC4
 
-	output wire beep,             // INTE of the CPU
+	output wire beep,             // INTE of the CPU (the RK86)
 	output wire tape_out,         // PC0
+	output wire [15:0] audio,     // the beep, the 8253 and the tape output
 
 	// 800 x 600 at 60 Hz (rk_video)
 	output wire [23:0] rgb,
@@ -100,7 +116,11 @@ rk_cpu cpu (
 	.ce_f2(ce_f2)
 );
 
-assign beep = inte;
+wire m_mk = model == 3'd1;
+wire m_ap = model == 3'd2;
+wire m_rk = !m_mk && !m_ap;
+
+assign beep = m_rk & inte;
 
 reg wr_d = 1'b0;
 always @(posedge clk)
@@ -115,31 +135,39 @@ always @(posedge clk)
 	else if (mem_rd && a[15])
 		startup <= 1'b0;
 
-// ------------------------------------------------------------------ decoding (the Radio-86RK)
-wire sel_ppi1 = a[15:13] == 3'b100;               // 8000-9FFF
-wire sel_ppi2 = a[15:13] == 3'b101;               // A000-BFFF
-wire sel_crt = a[15:13] == 3'b110;                // C000-DFFF
-wire sel_hi = a[15:13] == 3'b111;                 // E000-FFFF: reads the ROMs, writes the DMA
-wire sel_mon = a[15:11] == 5'b11111;              // F800-FFFF
-wire sel_dma = sel_hi;
+// ------------------------------------------------------------------ decoding
+wire f800 = a[15:11] == 5'b11111;
+wire ap_io = a[15:10] == 6'b111011;               // EC00-EFFF of the Apogey
+// the RK86: 8000 PPI 1, A000 PPI 2, C000 VG75, E000-FFFF writes the DMA, F800 the Monitor
+// the Mikrosha: C000 PPI 1, C800 PPI 2, D000 VG75, D800 8253, F800 the Monitor and the DMA
+// the Apogey: EC00 8253, ED00 PPI 1, EE00 PPI 2, EF00 VG75, F000 the ROM and the DMA
+wire sel_ppi1 = m_mk ? a[15:11] == 5'b11000 : m_ap ? ap_io && a[9:8] == 2'd1 : a[15:13] == 3'b100;
+wire sel_ppi2 = m_mk ? a[15:11] == 5'b11001 : m_ap ? ap_io && a[9:8] == 2'd2 : a[15:13] == 3'b101;
+wire sel_crt = m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 : a[15:13] == 3'b110;
+wire sel_pit = m_mk ? a[15:11] == 5'b11011 : m_ap ? ap_io && a[9:8] == 2'd0 : 1'b0;
+wire sel_mon = m_ap ? a[15:12] == 4'hF : f800;
+wire sel_dma = m_rk ? a[15:13] == 3'b111 : sel_mon;
 wire sel_rom = startup || (sel_mon && !mem_wr);
-wire sel_ram = !a[15];
+wire sel_ram = m_ap ? a[15:12] != 4'hF && !ap_io : !a[15];
+wire sel_rdisk = m_ap && sel_ppi2 && a[1:0] == 2'd0;   // port A: the ROM disk
 
 // ------------------------------------------------------------------ the PPIs
-wire [7:0] ppi1_do, ppi2_do, ppi1_pc;
+wire [7:0] ppi1_do, ppi2_do, ppi1_pc, ppi1_pa, ppi1_pb, ppi2_pb, ppi2_pc;
+wire ppi2_pb_in;
 
 wire [7:0] kb_scan, kb_ret;
 wire [3:0] kb_pc_hi;
 
 rk_ppi ppi1 (
 	.clk(clk), .reset(run_reset), .a(a[1:0]), .wr(wr_p & sel_ppi1), .din(cpu_do), .dout(ppi1_do),
-	.pa_i(8'hFF), .pb_i(kb_ret), .pc_i({ kb_pc_hi[3:1], tape_in, 4'hF }),
+	.pa_i(m_mk ? kb_ret : 8'hFF), .pb_i(m_mk ? 8'hFF : kb_ret), .pc_i({ kb_pc_hi[3:1], tape_in, 4'hF }),
 	.pa_in(), .pb_in(), .pcl_in(),
-	.pa_o(kb_scan), .pb_o(), .pc_o(ppi1_pc)
+	.pa_o(ppi1_pa), .pb_o(ppi1_pb), .pc_o(ppi1_pc)
 );
+assign kb_scan = m_mk ? ppi1_pb : ppi1_pa;
 
 rk_kbd kbd (
-	.clk(clk), .reset(reset), .ms7007(1'b0),
+	.clk(clk), .reset(reset), .ms7007(1'b0), .mikrosha(m_mk),
 	.scancode(kb_scancode), .scancode_upd(kb_scancode_upd), .joy(joy),
 	.scan(kb_scan), .ret(kb_ret), .pc_hi(kb_pc_hi)
 );
@@ -148,9 +176,58 @@ assign tape_out = ppi1_pc[0];
 rk_ppi ppi2 (
 	.clk(clk), .reset(run_reset), .a(a[1:0]), .wr(wr_p & sel_ppi2), .din(cpu_do), .dout(ppi2_do),
 	.pa_i(8'hFF), .pb_i(8'hFF), .pc_i(8'hFF),
-	.pa_in(), .pb_in(), .pcl_in(),
-	.pa_o(), .pb_o(), .pc_o()
+	.pa_in(), .pb_in(ppi2_pb_in), .pcl_in(),
+	.pa_o(), .pb_o(ppi2_pb), .pc_o(ppi2_pc)
 );
+
+// the ROM disk of the Apogey
+reg [3:0] rd_bank = 4'd0;
+reg pc7_d = 1'b0;
+always @(posedge clk) begin
+	pc7_d <= ppi2_pc[7];
+	if (run_reset)
+		rd_bank <= 4'd0;
+	else if (ppi2_pc[7] && !pc7_d)
+		rd_bank <= ppi2_pb[3:0];
+end
+wire [18:0] rd_addr = { rd_bank, ppi2_pc[6:0], ppi2_pb };
+
+// the font set: PB7 of PPI 2 of the Mikrosha (0 while the port is an input), INTE of the Apogey
+wire charset = m_mk ? !ppi2_pb_in && ppi2_pb[7] : m_ap ? inte : 1'b0;
+
+// ------------------------------------------------------------------ the 8253 and the sound
+reg [5:0] pit_acc = 6'd0;      // 40 MHz * 2 / 45 = 1.78 MHz
+always @(posedge clk)
+	pit_acc <= pit_acc >= 6'd43 ? pit_acc - 6'd43 : pit_acc + 6'd2;
+wire pit_clk = pit_acc < 6'd23;
+wire [7:0] pit_do;
+wire pit_out0, pit_out1, pit_out2;
+
+KF8253 pit (
+	.clock(clk),
+	.reset(run_reset),
+	.chip_select_n(~sel_pit),
+	.read_enable_n(~mem_rd),
+	.write_enable_n(~mem_wr),
+	.address(a[1:0]),
+	.data_bus_in(cpu_do),
+	.data_bus_out(pit_do),
+	.counter_0_clock(pit_clk),
+	.counter_0_gate(1'b1),
+	.counter_0_out(pit_out0),
+	.counter_1_clock(pit_clk),
+	.counter_1_gate(1'b1),
+	.counter_1_out(pit_out1),
+	.counter_2_clock(pit_clk),
+	.counter_2_gate(m_mk ? ppi1_pc[2] : 1'b1),
+	.counter_2_out(pit_out2)
+);
+
+wire [15:0] v0 = pit_out0 ? 16'h1000 : 16'h0000;
+wire [15:0] v1 = pit_out1 ? 16'h1000 : 16'h0000;
+wire [15:0] v2 = pit_out2 ? 16'h1000 : 16'h0000;
+wire [15:0] snd_pit = m_ap ? v0 + v1 + v2 : m_mk ? (ppi1_pc[1] ? v2 : 16'h0000) : 16'h0000;
+assign audio = (beep ? 16'h1800 : 16'h0000) + (tape_out ? 16'h0400 : 16'h0000) + snd_pit;
 
 // ------------------------------------------------------------------ the VG75 and its DMA
 reg [2:0] pix_div = 3'd0;
@@ -190,13 +267,14 @@ k580vt57 dma (
 );
 assign vid_dack = dack[2];
 
-// the font: 2 KB, written by the ROM loader at 1F0000
-reg [7:0] font [0:2047];
+// the fonts: 2 KB of each model, written by the ROM loader at 1F0000
+reg [7:0] font [0:8191];
 reg [7:0] font_q = 8'd0;
+wire [1:0] font_sel = m_mk ? 2'd1 : m_ap ? 2'd2 : 2'd0;
 always @(posedge clk) begin
-	if (rom_wr && rom_addr[21:11] == 11'h3E0)     // 1F0000-1F07FF
-		font[rom_addr[10:0]] <= ~rom_data;   // the fonts of Emu80 are stored inverted (a point is 0)
-	font_q <= font[font_addr];
+	if (rom_wr && rom_addr[21:13] == 9'h0F8)     // 1F0000-1F1FFF
+		font[rom_addr[12:0]] <= ~rom_data;   // the fonts of Emu80 are stored inverted (a point is 0)
+	font_q <= font[{ font_sel, font_addr }];
 end
 
 k580vg75 crt (
@@ -217,7 +295,7 @@ k580vg75 crt (
 	.pix(pix),
 	.hilight(hilight),
 	.gattr(gattr),
-	.charset(1'b0),
+	.charset(charset),
 	.scr_shift(5'd0),
 	.font_addr(font_addr),
 	.font_data(font_q)
@@ -268,8 +346,12 @@ always @(posedge clk) begin
 end
 
 // ------------------------------------------------------------------ the memory
-wire [21:0] mon_off = 22'h100000 | { 11'd0, a[10:0] };   // 100000 + (a - F800), and 0000.. at startup
-wire [21:0] sram_addr = hlda ? { 6'd0, dma_addr } : sel_rom ? mon_off : { 6'd0, a };
+// the ROM: 100000 + (a - F800) of the RK86, 100800 + .. of the Mikrosha, 101000 + (a - F000) of the
+// Apogey; at startup its upper 2 KB
+wire [21:0] mon_off = m_ap ? 22'h101000 | { 10'd0, a[11] | startup, a[10:0] } :
+                      m_mk ? 22'h100800 | { 11'd0, a[10:0] } : 22'h100000 | { 11'd0, a[10:0] };
+wire [21:0] sram_addr = hlda ? { 6'd0, dma_addr } : sel_rom ? mon_off :
+                        sel_rdisk ? 22'h200000 | { 3'd0, rd_addr } : { 6'd0, a };
 wire sram_we = mem_wr && sel_ram && !hlda;
 
 // ------------------------------------------------------------------ autorun of a tape file
@@ -317,6 +399,8 @@ always @* begin
 	else if (inj == 2'd3) cpu_di = rk_start[15:8];
 	else if (sel_rom) cpu_di = sram_do;
 	else if (sel_ram) cpu_di = sram_do;
+	else if (sel_rdisk) cpu_di = sram_do;
+	else if (sel_pit) cpu_di = pit_do;
 	else if (sel_ppi1) cpu_di = ppi1_do;
 	else if (sel_ppi2) cpu_di = ppi2_do;
 	else if (sel_crt) cpu_di = crt_do;
@@ -360,7 +444,7 @@ wire [15:0] vid_dout;
 
 rk_video video (
 	.clk(clk),
-	.color(color),
+	.color(color && m_ap),
 	.vid_req(vid_req),
 	.vid_addr(vid_addr),
 	.vid_dout(vid_dout),
