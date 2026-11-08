@@ -190,6 +190,12 @@ int main(int argc, char **argv) {
 			if (color && (fb[i] & 8)) {   // the Apogey: R = !hilight, G = !gattr1, B = !gattr0
 				p[0] = (fb[i] & 4) ? 0 : 255; p[1] = (fb[i] & 2) ? 0 : 255; p[2] = (fb[i] & 1) ? 0 : 255;
 			}
+			if (model == 3) {   // the Partner: { 0, p, p, p } the text, { 1, R, G, B } the MCPG
+				uint8_t t = (fb[i] & 1) ? 192 : 0;
+				p[0] = (fb[i] & 8) ? ((fb[i] & 4) ? 255 : 0) : t;
+				p[1] = (fb[i] & 8) ? ((fb[i] & 2) ? 255 : 0) : t;
+				p[2] = (fb[i] & 8) ? ((fb[i] & 1) ? 255 : 0) : t;
+			}
 			fwrite(p, 1, 3, f);
 		}
 		fclose(f);

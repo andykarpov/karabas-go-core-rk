@@ -17,7 +17,8 @@
  other half shows.
 
  Colours: mono (a point grey, a highlighted point white) or the colours of the Apogey (Apogee_MiSTer:
- R = point and not highlight, G = point and not gattr1, B = point and not gattr0).
+ R = point and not highlight, G = point and not gattr1, B = point and not gattr0). The Partner: { 0, p, p, p }
+ its text (grey), { 1, R, G, B } a point of its colour module MCPG.
 */
 
 module rk_video #(
@@ -25,6 +26,7 @@ module rk_video #(
 ) (
 	input wire clk,
 	input wire color,
+	input wire partner,   // the points of the Partner: { 0, p, p, p } the text, { 1, R, G, B } the MCPG
 
 	output reg vid_req = 1'b0,
 	output reg [20:0] vid_addr = 21'd0,
@@ -151,13 +153,15 @@ wire p = nib[3], hl = nib[2];
 wire [7:0] lv = hl ? 8'hFF : 8'hC0;
 wire [23:0] c_mono = p ? { lv, lv, lv } : 24'd0;
 wire [23:0] c_color = { (p & ~hl) ? 8'hFF : 8'h00, (p & ~nib[1]) ? 8'hFF : 8'h00, (p & ~nib[0]) ? 8'hFF : 8'h00 };
+wire [23:0] c_pt = nib[3] ? { nib[2] ? 8'hFF : 8'h00, nib[1] ? 8'hFF : 8'h00, nib[0] ? 8'hFF : 8'h00 } :
+                   nib[0] ? 24'hC0C0C0 : 24'd0;
 
 // stage 2
 always @(posedge clk) begin
 	de <= de2;
 	hs <= hs2;
 	vs <= vs2;
-	rgb <= vis2 ? (color ? c_color : c_mono) : 24'd0;
+	rgb <= vis2 ? (partner ? c_pt : color ? c_color : c_mono) : 24'd0;
 end
 
 endmodule

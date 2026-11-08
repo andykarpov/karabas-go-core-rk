@@ -26,7 +26,13 @@ module k580vg75 (
 	font_addr,
 	font_data,
 	cur_attr,
-	cur_line
+	cur_line,
+	mc_addr,
+	mc_attr,
+	mc_bg,
+	mc_gfx,
+	mc_pt,
+	mc_on
 );
 	input clk_sys;
 	input reset;   // karabas: back to the state of power on (the display off, the raster at 0)
@@ -52,6 +58,21 @@ module k580vg75 (
 	input [7:0] font_data;
 	output wire [5:0] cur_attr;   // karabas: the field attribute of the character of font_addr (the Partner picks its font by it)
 	output wire [3:0] cur_line;   // karabas: the line counter in the row (the beeper of the Partner)
+	// karabas: the character of pix for the colour module MCPG of the Partner (Emu80 PartnerMcpgRenderer),
+	// latched with its points: { rvv, code, line } (its address in the RAM of the MCPG), its HGLT, GPA1,
+	// GPA0, the background (vsp, not lten), a character attribute code (11xxxxxx), the point 0..5 of pix,
+	// a character inside the row (not past the end of the row or of the screen) out of the retraces
+	output [10:0] mc_addr;
+	output [2:0] mc_attr;
+	output mc_bg;
+	output mc_gfx;
+	output [2:0] mc_pt;
+	output wire mc_on;
+	reg [10:0] mc_addr = 11'd0;
+	reg [2:0] mc_attr = 3'd0;
+	reg mc_bg = 1'b0;
+	reg mc_gfx = 1'b0;
+	reg [2:0] mc_pt = 3'd0;
 	parameter CHAR_WIDTH = 5;
 	reg [7:0] init2;
 	wire [3:0] charheight = init2[3:0];
@@ -75,6 +96,9 @@ module k580vg75 (
 	reg blank;
 	reg [7:0] cdata;
 	assign pix = ((hrtc | blank) | vrtc ? 1'b0 : cdata[CHAR_WIDTH]);
+	reg ovis = 1'b0;   // karabas: ochar is a character of the row
+	reg mc_vis = 1'b0;
+	assign mc_on = ((hrtc | blank) | vrtc ? 1'b0 : mc_vis);
 	reg [7:0] init0;
 	reg [7:0] init1;
 	reg [6:0] curx;
@@ -249,6 +273,7 @@ module k580vg75 (
 					opos <= 0;
 				end
 				else begin
+					ovis <= ypos != 0 && opos <= maxx;
 					if (ypos != 0) begin
 						if (~obuf[7:4])
 							opos <= opos + 1'b1;
@@ -308,7 +333,13 @@ module k580vg75 (
 				end
 				cdata <= (vspfe ? 8'd0 : {8 {rvv}} ^ (ochar[7] ? gdata : (lten ? 8'hff : (vsp ? 8'b00000000 : fdata))));
 				attr2 <= (ochar[7] ? {attr[4:2], 1'b0, ochar[0]} : attr);
+				mc_addr <= {rvv, ochar[6:0], line[2:0]};
+				mc_attr <= {attr[0], attr[3], attr[2]};
+				mc_bg <= vsp & !lten;
+				mc_gfx <= ochar[7] & ochar[6];
+				mc_vis <= ovis & !vspfe;
 			end
+			mc_pt <= !dot ? 3'd0 : mc_pt + 3'd1;
 			if (dot == 1)
 				obuf <= buff[{~lineff, opos[6:0]}];
 		end
