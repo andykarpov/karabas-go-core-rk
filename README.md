@@ -19,7 +19,7 @@ old [karabas-go-core-rk86](https://github.com/andykarpov/karabas-go-core-rk86).
 The core file is `src/rk.kg`.
 
 **State:** work in progress, build 26110805, **Mini G only** for now. The Radio-86RK, the Mikrosha,
-the Apogey and the Mikro-80 run on the Mini G; the Partner 01.01 runs in simulation (see
+the Apogey, the Partner 01.01 and the Mikro-80 run on the Mini G (see
 [What is tested](#what-is-tested)). SDOS on an SD card and the Go and Mini boards are the next phases
 ([docs/PLAN.md](docs/PLAN.md), Russian).
 
@@ -160,7 +160,8 @@ next start of the core: choose it once more then.
 
 Model = Partner: `ПАРТНЕР-01.01 (В.03)` and the prompt `:->`. The directives are those of the RK
 Monitor; `B` starts the built-in BASIC (Бейсик-Микрон), `A` the built-in editor and assembler Микрон
-(`СТР`, here Delete, switches between them). Programs: `.rkp` files, Tape file.
+(`СТР`, here Delete, switches between them). If letters come out in Cyrillic (the BASIC may start
+in the Russian mode), press Caps Lock (РУС/ЛАТ). Programs: `.rkp` files, Tape file.
 
 **MCPG:** the colour module is always there: a program switches it on and draws in colour over the
 text, as the games of `COLOR` in Emu80 do. Its 8253 plays three channels of music. The floppy and SD
@@ -247,7 +248,7 @@ On the Mini G with an HDMI capture (picture and sound):
 | Mikro-80, Mikro-80RK: Monitors, keyboard, ROM disk shell, Tetris | yes |
 | A change of the model on the fly | yes |
 | Mikro-80 RAM disk | simulation only |
-| Partner: Monitor, keyboard, `.rkp` games, MCPG colour games | simulation only |
+| Partner: Monitor, BASIC, keyboard, `.rkp` games (XONIX), MCPG colour games and their music (PACMAN, MARS2) | yes |
 | Mikrosha `.rkm` programs and their sound | not yet |
 | Tape | not yet |
 | Go, Mini | not built yet |
