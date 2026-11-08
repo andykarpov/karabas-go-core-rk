@@ -17,7 +17,7 @@
 #  8. the Partner 01.01: its Monitor starts, the keys of 3 change the screen, a tape file starts by itself.
 #  9. EMU80=DIR (Emu80 dist): the Partner games XONIX (needs the Monitor variables, set 0.4 s after
 #     reset) and CROSSFIR start by themselves: the screen is not that of the Monitor; PACMAN draws
-#     in colour through the MCPG.
+#     in colour through the MCPG; SDOS of the RK86 (GE000) on the SD image of Emu80 reads the card.
 # 10. FULL=1: the ROM disk of the Apogey (Emu80 romdisk512.bin, ROMDISK=FILE) loads by FL slot 2 and
 #     R,C + G starts its shell (2.5 minutes).
 set -eu
@@ -26,14 +26,14 @@ S=$(cd "$H/.." && pwd)
 B=${SIM_BUILD:-$H/build}
 mkdir -p "$B"
 R=$S/rtl
-SRC="$H/tb_boot.v $R/rk/rk_system.v $R/rk/rk_kbd.v $R/rk/rk_loader.v $R/rk/rk_video.v $R/rk/rk_m80video.v $R/rk/rk_cpu.v $R/rk/rk_ppi.v $R/rk/rk_sram.v $R/apogee/k580vg75.v $R/apogee/k580vt57.v $R/vm80a/vm80a.v $R/kf8253/KF8253.v $R/kf8253/KF8253_Control_Logic.v $R/kf8253/KF8253_Counter.v"
+SRC="$H/tb_boot.v $R/rk/rk_system.v $R/rk/rk_kbd.v $R/rk/rk_loader.v $R/rk/rk_video.v $R/rk/rk_m80video.v $R/rk/rk_sd.v $S/../modules/rtl/mcu/img_sdc.v $S/../modules/rtl/mem/kg_tdpram.v $R/rk/rk_cpu.v $R/rk/rk_ppi.v $R/rk/rk_sram.v $R/apogee/k580vg75.v $R/apogee/k580vt57.v $R/vm80a/vm80a.v $R/kf8253/KF8253.v $R/kf8253/KF8253_Control_Logic.v $R/kf8253/KF8253_Counter.v"
 verilator --language 1364-2005 --cc --exe --build -j 8 -O3 --top-module tb_boot -Mdir "$B/obj" -o sim_boot \
 	-Wno-fatal -Wno-lint -Wno-style -Wno-MULTIDRIVEN -Wno-UNOPTFLAT -Wno-PINMISSING -Wno-PINNOTFOUND \
 	--x-initial fast -CFLAGS -O2 $SRC "$H/sim_boot.cpp" > "$B/build.log" 2>&1 || { tail -30 "$B/build.log"; exit 1; }
 [ -z "${BUILD_ONLY:-}" ] || exit 0
 cd "$S"
 SIM=$B/obj/sim_boot
-ROMS="--rom roms/rk86.rom:0x100000 --rom roms/mikrosha.rom:0x100800 --rom roms/apogey.rom:0x101000 --rom roms/sgr.bin:0x1F0000 --rom roms/sgm.bin:0x1F0800 --rom roms/sga.bin:0x1F1000 --rom roms/mikro80.rom:0x102000 --rom roms/mikro80rk.rom:0x102800 --rom roms/sgm80.bin:0x1F1800 --rom roms/romp1.bin:0x104000 --rom roms/romp2.bin:0x106000 --rom roms/sdrom.bin:0x108000 --rom roms/fddrom.bin:0x108800 --rom roms/mcpgrom.bin:0x109000 --rom roms/d14.bin:0x10A000 --rom roms/sgp.bin:0x1F2000"
+ROMS="--rom roms/rk86.rom:0x100000 --rom roms/mikrosha.rom:0x100800 --rom roms/apogey.rom:0x101000 --rom roms/sgr.bin:0x1F0000 --rom roms/sgm.bin:0x1F0800 --rom roms/sga.bin:0x1F1000 --rom roms/mikro80.rom:0x102000 --rom roms/mikro80rk.rom:0x102800 --rom roms/sgm80.bin:0x1F1800 --rom roms/romp1.bin:0x104000 --rom roms/romp2.bin:0x106000 --rom roms/sdrom.bin:0x108000 --rom roms/fddrom.bin:0x108800 --rom roms/mcpgrom.bin:0x109000 --rom roms/d14.bin:0x10A000 --rom roms/sgp.bin:0x1F2000 --rom roms/sdos_hwmpvv.bin:0x10B000"
 T=${BOOT_MS:-1000}
 err=0
 "$SIM" $ROMS --ms $T --ppm "$B/rk86.ppm" --frame "$B/rk86_frame.ppm" || err=1
@@ -84,6 +84,10 @@ if [ -d "$EMU80/dist/partner/sdcard/GAMES" ]; then
 		"$SIM" $ROMS --model 3 --ms 4000 --file 500:1:"$EMU80/dist/partner/sdcard/GAMES/$g.RKP" --ppm "$B/p_$g.ppm" || err=1
 		cmp -s "$B/m3_2s.ppm" "$B/p_$g.ppm" && { echo "Partner: $g does not start"; err=1; }
 	done
+	# SDOS: GE000 on the SD image of Emu80 (F slot 3), DIR lists its folders
+	"$SIM" $ROMS --ms 5000 --sd "$EMU80/dist/rk86/sd_rk86.img" $(keys 800 34 24 45 45 45 5A) $(keys 3500 23 43 2D 5A) \
+		--ppm "$B/sdos.ppm" | tee "$B/sdos.txt" || err=1
+	grep -q "sd reads [1-9]" "$B/sdos.txt" || { echo "SDOS reads nothing of the SD card"; err=1; }
 	# the colour module: PACMAN draws its picture through the MCPG (points of colour, not grey)
 	"$SIM" $ROMS --model 3 --ms 5000 --file 500:1:"$EMU80/dist/partner/sdcard/COLOR/PACMAN.RKP" --ppm "$B/p_PACMAN.ppm" || err=1
 	python3 -c "import sys; d = open(sys.argv[1], 'rb').read()[15:]; sys.exit(sum(d[i] != d[i + 1] for i in range(0, len(d), 3)) < 1000)" \

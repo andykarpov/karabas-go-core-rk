@@ -63,6 +63,7 @@
    102800  the Monitor of the RK type of the Mikro-80
    104000  the Partner: ROM 1 (8 KB), 106000 ROM 2, 108000 / 108800 / 109000 the ROMs of its SD card,
            floppy and MCPG modules (2 KB each), 10A000 the PROM D14 (512 bytes, kept decoded in rk_system)
+   10B000  SDOS of the RK86 (4 KB, read at E000-EFFF), 10C000 the RAM of the MCPG (4 KB)
    200000  the ROM disk (FL slot 2): the Apogey up to 512 KB, the Mikro-80 64 KB
    280000  the RAM disk of the Mikro-80, 8 x 64 KB
    300000  the frame buffer, 512 x 300 x 4 bits
@@ -97,6 +98,19 @@ module rk_system (
 	input wire [31:0] file_addr,
 	input wire [7:0] file_data,
 	input wire file_wr,
+
+	// the images of the F items (img_sdc of kg_mcu): slot 3, the SD card of SDOS
+	input wire [7:0] img_mounted,
+	input wire [63:0] img_size,
+	input wire img_data_wr,
+	input wire [8:0] img_data_addr,
+	input wire [7:0] img_data,
+	input wire img_result_wr,
+	input wire [7:0] img_result,
+	input wire [15:0] img_sum,
+	output wire img_q_wr,
+	output wire [23:0] img_q_di,
+	input wire img_q_ack,
 
 	// the keyboard (rk_kbd on the keyboard PPI at 8000)
 	input wire [7:0] kb_scancode,
@@ -235,10 +249,15 @@ wire sel_ppi1 = m_pt ? pt_slot && pt_sub == 3'd1 : m_80 ? m80_io && a[7:2] == 6'
                 m_ap ? ap_io && a[9:8] == 2'd1 : a[15:13] == 3'b100;
 wire sel_ppi2 = m_pt ? 1'b0 : m_80 ? m80_io && a[7:2] == 6'b101000 : m_mk ? a[15:11] == 5'b11001 :
                 m_ap ? ap_io && a[9:8] == 2'd2 : a[15:13] == 3'b101;
-wire sel_crt = m_pt ? pt_slot && pt_sub == 3'd0 : m_80 ? 1'b0 : m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 : a[15:13] == 3'b110;
+// the RK86 with an SD card image (F slot 3): SDOS, the adapter at D000-DFFF, the VG75 at C000-CFFF
+reg sd_on = 1'b0;
+wire [7:0] sd_do;
+wire sel_sd = m_rk && sd_on && a[15:12] == 4'hD;
+wire sel_crt = m_pt ? pt_slot && pt_sub == 3'd0 : m_80 ? 1'b0 : m_mk ? a[15:11] == 5'b11010 : m_ap ? ap_io && a[9:8] == 2'd3 :
+               a[15:13] == 3'b110 && !sel_sd;
 wire sel_pit = m_pt ? pt_dev && pt_sub[0] && pmod == 3'd2 :
                m_mk ? a[15:11] == 5'b11011 : m_ap ? ap_io && a[9:8] == 2'd0 : 1'b0;
-wire sel_mon = m_pt ? pt_rom : m_80 ? m80_mem && f800 : m_ap ? a[15:12] == 4'hF : f800;
+wire sel_mon = m_pt ? pt_rom : m_80 ? m80_mem && f800 : m_ap ? a[15:12] == 4'hF : m_rk ? f800 || a[15:12] == 4'hE : f800;
 wire sel_dma = m_pt ? pt_slot && pt_sub == 3'd3 : m_80 ? 1'b0 : m_rk ? a[15:13] == 3'b111 : sel_mon;
 wire sel_rom = !sel_rpg && (startup || (sel_mon && !mem_wr));
 wire sel_ram = m_pt ? pt_ram : m_80 ? m80_mem && !f800 : m_ap ? a[15:12] != 4'hF && !ap_io : !a[15];
@@ -566,7 +585,8 @@ end
 // Apogey; at startup its upper 2 KB
 wire [21:0] mon_off = m_ap ? 22'h101000 | { 10'd0, a[11] | startup, a[10:0] } :
                       model == 3'd5 ? 22'h102800 | { 11'd0, a[10:0] } : m_80 ? 22'h102000 | { 11'd0, a[10:0] } :
-                      m_mk ? 22'h100800 | { 11'd0, a[10:0] } : 22'h100000 | { 11'd0, a[10:0] };
+                      m_mk ? 22'h100800 | { 11'd0, a[10:0] } : a[15:12] == 4'hE ? 22'h10B000 | { 10'd0, a[11:0] } :
+                      22'h100000 | { 11'd0, a[10:0] };
 wire [2:0] rpage_n = rpage[2:0] - 3'd1;   // pages 1..8 as 0..7
 wire [21:0] sram_addr = hlda ? (m_pt ? pt_sram(pblk_dma, dma_addr) : { 6'd0, dma_addr }) :
                         m_pt ? pt_sram(pblk, a) : sel_rpg ? { 3'b101, rpage_n, a } : sel_rom ? mon_off :
@@ -629,7 +649,76 @@ always @* begin
 	else if (sel_ppi1) cpu_di = ppi1_do;
 	else if (sel_ppi2) cpu_di = ppi2_do;
 	else if (sel_crt) cpu_di = crt_do;
+	else if (sel_sd) cpu_di = a[0] ? 8'h00 : sd_do;
 end
+
+// ------------------------------------------------------------------ the SD card of SDOS
+wire [7:0] sdc_img_mounted;
+wire [63:0] sdc_img_size;
+always @(posedge clk)
+	if (sdc_img_mounted[3])
+		sd_on <= |sdc_img_size[31:0];
+wire mmc_rd, mmc_wr;
+wire [31:0] mmc_lba;
+wire [7:0] mmc_byte_out;
+wire sdc_busy, sdc_done, sdc_in_strobe;
+wire [2:0] sdc_slot;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_in_data;
+
+// no reset: a reset of the machine during a request leaves img_sdc to finish it
+img_sdc #(
+	.OUT_LATENCY(3),
+	.TIMEOUT(24'd8000000)     // 200 ms at 40 MHz
+) sdc (
+	.clk(clk),
+	.reset(1'b0),
+	.img_mounted(img_mounted),
+	.img_size(img_size),
+	.img_data_wr(img_data_wr),
+	.img_data_addr(img_data_addr),
+	.img_data(img_data),
+	.img_result_wr(img_result_wr),
+	.img_result(img_result),
+	.img_sum(img_sum),
+	.img_q_wr(img_q_wr),
+	.img_q_di(img_q_di),
+	.img_q_ack(img_q_ack),
+	.sdc_img_mounted(sdc_img_mounted),
+	.sdc_img_size(sdc_img_size),
+	.sdc_rd({ 4'd0, mmc_rd, 3'd0 }),
+	.sdc_wr({ 4'd0, mmc_wr, 3'd0 }),
+	.sdc_sector(mmc_lba),
+	.sdc_busy(sdc_busy),
+	.sdc_done(sdc_done),
+	.sdc_error(),
+	.sdc_slot(sdc_slot),
+	.sdc_byte_in_strobe(sdc_in_strobe),
+	.sdc_byte_addr(sdc_byte_addr),
+	.sdc_byte_in_data(sdc_in_data),
+	.sdc_byte_out_data(mmc_byte_out),
+	.active()
+);
+
+rk_sd sd (
+	.clk(clk),
+	.reset(run_reset),
+	.cs_wr(wr_p && sel_sd && a[0]),
+	.d_wr(wr_p && sel_sd && !a[0]),
+	.din(cpu_do),
+	.dout(sd_do),
+	.img_mounted(sdc_img_mounted[3]),
+	.img_size(sdc_img_size[31:0]),
+	.hd_rd(mmc_rd),
+	.hd_wr(mmc_wr),
+	.hd_lba(mmc_lba),
+	.hd_busy(sdc_busy && sdc_slot == 3'd3),
+	.hd_done(sdc_done && sdc_slot == 3'd3),
+	.hd_byte_in_strobe(sdc_in_strobe && sdc_slot == 3'd3),
+	.hd_byte_addr(sdc_byte_addr),
+	.hd_byte_in_data(sdc_in_data),
+	.hd_byte_out_data(mmc_byte_out)
+);
 
 // the aux port of the SRAM: the loaders, else the frame buffer
 wire ld_req, aux_ack;
