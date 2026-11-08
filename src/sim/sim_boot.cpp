@@ -1,6 +1,6 @@
 // sim_boot: tb_boot (rk_system + SRAM model) under verilator (after the sim_boot of core-specialist).
 //
-//   sim_boot --rom FILE:ADDR ... [--turbo] [--color] [--noauto] [--ms N] [--file MS:SLOT:FILE ...]
+//   sim_boot --rom FILE:ADDR ... [--model N] [--turbo] [--color] [--noauto] [--ms N] [--file MS:SLOT:FILE ...]
 //            [--key MS:B,B,.. ...] [--ppm OUT] [--frame OUT] [--expect ADDR:VAL ...] [--dump ADDR:N]
 //
 // The ROMs go in through the ROM loader (one byte every 12 clocks), then the machine runs N ms of its
@@ -9,6 +9,9 @@
 // writes the frame buffer (512 x 300, 4 bits a point at 300000 of the SRAM) as an image; --frame
 // captures the next whole frame of the video output (800 x 600). --expect checks a byte of the SRAM (a
 // byte address of rk_sram) at the end; --dump prints bytes of the SRAM. TRACE=N prints N CPU reads.
+// --wav OUT writes the audio sampled at 48 kHz (every 833 clocks), mono 16-bit.
+// --model: 0 the RK86, 1 the Mikrosha, 2 the Apogey; --switch MS:N changes it at that time under a reset of
+// 255 clocks, as the top does. "sound edges" counts the changes of the audio.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -50,8 +53,9 @@ int main(int argc, char **argv) {
 	std::vector<std::pair<std::string, uint32_t>> roms;
 	std::vector<std::pair<uint32_t, int>> expects, dumps;
 	std::vector<Ev> evs;
-	int ms = 1000;
-	const char *ppm = nullptr, *frame = nullptr;
+	int ms = 1000, model = 0;
+	const char *ppm = nullptr, *frame = nullptr, *wav = nullptr;
+	std::vector<int16_t> pcm;
 	bool turbo = false, color = false, autorun = true;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--rom") || !strcmp(argv[i], "--expect")) {
@@ -76,15 +80,21 @@ int main(int argc, char **argv) {
 			while (*p) { e.keys.push_back(strtoul(p, (char **)&p, 16)); if (*p == ',') p++; }
 			evs.push_back(e);
 		}
+		else if (!strcmp(argv[i], "--model")) model = atoi(argv[++i]);
+		else if (!strcmp(argv[i], "--switch")) {
+			std::string s = argv[++i];
+			evs.push_back({ strtoull(s.c_str(), nullptr, 0) * 40000, 2, atoi(s.c_str() + s.find(':') + 1), "", {} });
+		}
 		else if (!strcmp(argv[i], "--turbo")) turbo = true;
 		else if (!strcmp(argv[i], "--color")) color = true;
 		else if (!strcmp(argv[i], "--noauto")) autorun = false;
 		else if (!strcmp(argv[i], "--ms")) ms = atoi(argv[++i]);
 		else if (!strcmp(argv[i], "--ppm")) ppm = argv[++i];
+		else if (!strcmp(argv[i], "--wav")) wav = argv[++i];
 		else if (!strcmp(argv[i], "--frame")) frame = argv[++i];
 		else { fprintf(stderr, "bad option %s\n", argv[i]); return 2; }
 	}
-	top->turbo = turbo; top->color = color; top->autorun = autorun;
+	top->turbo = turbo; top->color = color; top->autorun = autorun; top->model = model;
 	top->reset = 1; top->rom_active = 0; top->rom_wr = 0; top->file_active = 0; top->file_wr = 0;
 	top->kb_scancode = 0; top->kb_scancode_upd = 0;
 	for (int i = 0; i < 400; i++) tick();
@@ -101,7 +111,7 @@ int main(int argc, char **argv) {
 	for (int i = 0; i < 40; i++) tick();
 	top->rom_active = 0;
 	uint64_t t0 = clks, end = t0 + (uint64_t)ms * 40000;
-	int beeps = 0, prev = 0, prd = 0;
+	int beeps = 0, prev = 0, prd = 0, snds = 0, psnd = 0;
 	int trace = getenv("TRACE") ? atoi(getenv("TRACE")) : 0;
 	while (clks < end) {
 		for (auto &e : evs) {
@@ -118,6 +128,11 @@ int main(int argc, char **argv) {
 				for (int i = 0; i < 40; i++) tick();
 				top->file_active = 0;
 			}
+			else if (e.kind == 2) {
+				top->model = e.slot; model = e.slot; top->reset = 1;
+				for (int i = 0; i < 255; i++) tick();
+				top->reset = 0;
+			}
 			else
 				for (uint8_t k : e.keys) {
 					top->kb_scancode = k; top->kb_scancode_upd ^= 1;
@@ -128,6 +143,9 @@ int main(int argc, char **argv) {
 		tick();
 		if (top->beep != prev) beeps++;
 		prev = top->beep;
+		if (top->audio != psnd) snds++;
+		psnd = top->audio;
+		if (wav && (clks - t0) % 833 == 0) pcm.push_back((int16_t)(top->audio >> 1));
 		if (trace > 0 && top->dbg_rd && !prd) { printf("rd %04x\n", top->dbg_a); trace--; }
 		prd = top->dbg_rd;
 	}
@@ -141,7 +159,8 @@ int main(int argc, char **argv) {
 			sum = sum * 31 + b;
 			lit += ((b >> 3) & 1) + ((b >> 7) & 1);
 		}
-	printf("RK86 %s %d ms: beep edges %d frame sum %08x lit %u\n", turbo ? "turbo" : "1.78MHz", ms, beeps, sum, lit);
+	static const char *names[] = { "RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80" };
+	printf("%s %s %d ms: beep edges %d sound edges %d frame sum %08x lit %u\n", names[model % 5], turbo ? "turbo" : "1.78MHz", ms, beeps, snds, sum, lit);
 	for (auto &d : dumps) {
 		for (int i = 0; i < d.second; i++) { if (i % 32 == 0) printf("\n%06x:", d.first + i); printf(" %02x", peek(d.first + i)); }
 		printf("\n");
@@ -151,12 +170,25 @@ int main(int argc, char **argv) {
 		uint8_t v = peek(e.first);
 		if (v != e.second) { printf("expect %06x: %02x, not %02x\n", e.first, v, e.second); err = 1; }
 	}
+	if (wav) {
+		FILE *f = fopen(wav, "wb");
+		uint32_t n = pcm.size() * 2, r = 48000, br = 96000, h = 16, sz = 36 + n;
+		uint16_t pcmf = 1, ch = 1, al = 2, bits = 16;
+		fwrite("RIFF", 1, 4, f); fwrite(&sz, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f); fwrite(&h, 4, 1, f);
+		fwrite(&pcmf, 2, 1, f); fwrite(&ch, 2, 1, f); fwrite(&r, 4, 1, f); fwrite(&br, 4, 1, f);
+		fwrite(&al, 2, 1, f); fwrite(&bits, 2, 1, f); fwrite("data", 1, 4, f); fwrite(&n, 4, 1, f);
+		fwrite(pcm.data(), 2, pcm.size(), f);
+		fclose(f);
+	}
 	if (ppm) {
 		FILE *f = fopen(ppm, "wb");
 		fprintf(f, "P6\n512 300\n255\n");
 		for (int i = 0; i < 512 * 300; i++) {
 			uint8_t v = (fb[i] & 8) ? ((fb[i] & 4) ? 255 : 192) : 0;
 			uint8_t p[3] = { v, v, v };
+			if (color && (fb[i] & 8)) {   // the Apogey: R = !hilight, G = !gattr1, B = !gattr0
+				p[0] = (fb[i] & 4) ? 0 : 255; p[1] = (fb[i] & 2) ? 0 : 255; p[2] = (fb[i] & 1) ? 0 : 255;
+			}
 			fwrite(p, 1, 3, f);
 		}
 		fclose(f);

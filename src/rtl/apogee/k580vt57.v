@@ -1,3 +1,4 @@
+`default_nettype wire   // karabas: KF8253 before it in the project leaves none
 // Imported from MiSTer-devel/Apogee_MiSTer (rtl/k580vt57.v) for karabas-go-core-rk; changes are marked
 // karabas. License: rtl/apogee/LICENSE.TXT (modified BSD).
 // ====================================================================

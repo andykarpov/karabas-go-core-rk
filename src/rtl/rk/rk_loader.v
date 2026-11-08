@@ -8,6 +8,7 @@
  An FL item writes by the slot of file_slot (the mcu writes a byte in ten clocks or less often; the
  machine is in reset meanwhile):
    slot 1  a tape file (.rk, .rkr, .gam, .rkm, .rka, ...) into the main RAM
+   slot 2  the ROM disk of the Apogey (up to 512 KB) at 200000
 
  A tape file of the RK family, as Emu80 RkFileLoader reads it: an optional E6, the start and end
  addresses (HIGH byte first), the bytes from start to end, a checksum (ignored). At the end of the
@@ -51,6 +52,11 @@ always @(posedge clk) begin
 		pend <= 1'b1;
 		pend_addr <= rom_addr;
 		pend_data <= rom_data;
+	end
+	else if (file_wr && file_slot == 8'd2) begin
+		pend <= 1'b1;
+		pend_addr <= 22'h200000 | { 3'd0, file_addr[18:0] };
+		pend_data <= file_data;
 	end
 	else if (file_wr && file_slot == 8'd1) begin
 		if (file_addr == 32'd0)

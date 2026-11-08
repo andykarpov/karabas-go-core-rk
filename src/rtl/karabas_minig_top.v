@@ -13,8 +13,8 @@
  pal is 0 (clk_pix = 40 MHz, the twin of clk_sys).
 
  Soft switches (the index of the item in the osd of core.json, file items included):
-   0 Tape file (FL 1)   1 -   2 Model (RK86 / Mikrosha / Apogey / Partner / Mikro-80)   3 CPU speed
-   4 Color   5 Autorun   6 Reset
+   0 Tape file (FL 1)   1 ROM disk (FL 2)   2 -   3 Model (RK86 / Mikrosha / Apogey / Partner / Mikro-80)
+   4 CPU speed   5 Color   6 Autorun   7 Reset
  A change of the model resets the machine.
 */
 
@@ -372,18 +372,18 @@ assign SD_CLK = mcu_sck_ibufg;
 
 // ------------------------------------------------------------------ soft switches
 
-wire [7*8-1:0] sw;
-kg_soft_switches #(.N(7)) soft_switches (
+wire [8*8-1:0] sw;
+kg_soft_switches #(.N(8)) soft_switches (
 	.clk(clk_sys),
 	.command(softsw_command),
 	.regs(sw),
 	.upd()
 );
-wire [2:0] sw_model = sw[2*8 +: 3];
-wire sw_turbo = sw[3*8];
-wire sw_color = sw[4*8];
-wire sw_noauto = sw[5*8];
-wire sw_reset = sw[6*8];
+wire [2:0] sw_model = sw[3*8 +: 3];
+wire sw_turbo = sw[4*8];
+wire sw_color = sw[5*8];
+wire sw_noauto = sw[6*8];
+wire sw_reset = sw[7*8];
 assign pal = 1'b0;
 
 // a change of the model resets the machine
@@ -401,7 +401,7 @@ end
 
 wire [23:0] video_rgb;
 wire video_hs, video_vs, video_de;
-wire beep;
+wire [15:0] audio;
 
 rk_system rk (
 	.clk(clk_sys),
@@ -409,6 +409,7 @@ rk_system rk (
 	.turbo(sw_turbo),
 	.color(sw_color),
 	.autorun(~sw_noauto),
+	.model(sw_model),
 	.rom_active(rom_active),
 	.rom_addr(rom_addr[21:0]),
 	.rom_data(rom_data),
@@ -422,8 +423,9 @@ rk_system rk (
 	.kb_scancode_upd(kb_scancode_upd),
 	.joy(joy_l | joy_r),
 	.tape_in(TAPE_IN),
-	.beep(beep),
+	.beep(),
 	.tape_out(TAPE_OUT),
+	.audio(audio),
 	.rgb(video_rgb),
 	.hs(video_hs),
 	.vs(video_vs),
@@ -466,8 +468,7 @@ kg_osd_overlay #(.H_DIV4_WIDTH(1100), .V_OFFSET_IN(1), .H_OFFSET_IN(1)) osd (
 
 // ------------------------------------------------------------------ audio
 
-// the MX hears its tape output too (Emu80), quieter
-wire [15:0] audio = (beep ? 16'h1800 : 16'h0000) + (TAPE_OUT ? 16'h0400 : 16'h0000);
+// audio: the mix of rk_system (the beep, the 8253, the tape output)
 
 kg_pcm5102 #(.DIV_BITS(2)) dac (  // bck 5 MHz, 156 kHz
 	.clk(clk_sys),

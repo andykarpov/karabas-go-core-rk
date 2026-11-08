@@ -1,8 +1,10 @@
+`default_nettype wire   // karabas: KF8253 before it in the project leaves none
 // Imported from MiSTer-devel/Apogee_MiSTer (rtl/k580vg75.sv), converted to Verilog by sv2v for
 // karabas-go-core-rk; changes are marked karabas (in the source before the conversion: the font ROM
 // moved out to the ports font_addr / font_data). License: rtl/apogee/LICENSE.TXT (modified BSD).
 module k580vg75 (
 	clk_sys,
+	reset,
 	ce_pix,
 	iaddr,
 	idata,
@@ -25,6 +27,7 @@ module k580vg75 (
 	font_data
 );
 	input clk_sys;
+	input reset;   // karabas: back to the state of power on (the display off, the raster at 0)
 	input ce_pix;
 	input iaddr;
 	input [7:0] idata;
@@ -302,6 +305,30 @@ module k580vg75 (
 			end
 			if (dot == 1)
 				obuf <= buff[{~lineff, opos[6:0]}];
+		end
+		// karabas: a reset of the machine (a change of the model) used to leave the VG75 in the middle of a
+		// frame, its display on and its DMA request pending, and the DMA programmed by the Monitor then
+		// started the screen at a wrong place
+		if (reset) begin
+			{enable, inte, irq, err, du, fo} <= 6'd0;
+			{drq, dmae, istate, eos, vspfe, lineff} <= 6'd0;
+			{hblank, vblank, hrtc, vrtc, blank} <= 5'd0;
+			pstate <= 3'd0;
+			ipos <= 7'd0;
+			iposf <= 4'd0;
+			xpos <= 7'd0;
+			xpos2 <= 7'd0;
+			ypos <= 7'd0;
+			ypos2 <= 7'd0;
+			chline <= 4'd0;
+			dot <= 4'd0;
+			frame <= 5'd0;
+			attr <= 6'd0;
+			exattr <= 6'd0;
+			opos <= 8'd0;
+			oposf <= 4'd0;
+			cur_bs <= 6'd0;
+			cur_bc <= 4'd0;
 		end
 	end
 endmodule
