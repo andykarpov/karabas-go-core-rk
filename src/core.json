@@ -1,7 +1,7 @@
 {
     "id": "rk",
     "name": "Radio-86RK family",
-    "build": "26110805",
+    "build": "26110806",
     "visible": true,
     "type": "osd",
     "order": 16,
@@ -18,6 +18,7 @@
     {"filename": "roms/fddrom.bin", "address": 1083392},
     {"filename": "roms/mcpgrom.bin", "address": 1085440},
     {"filename": "roms/d14.bin", "address": 1089536},
+    {"filename": "roms/sdos_hwmpvv.bin", "address": 1093632},
     {"filename": "roms/sgr.bin", "address": 2031616},
     {"filename": "roms/sgm.bin", "address": 2033664},
     {"filename": "roms/sga.bin", "address": 2035712},
@@ -25,11 +26,14 @@
     {"filename": "roms/sgp.bin", "address": 2039808}
     ],
     "boards": {
+        "go": {"bitstream": "karabas_go.bin"},
+        "mini": {"bitstream": "karabas_mini.bin"},
         "minig": {"bitstream": "karabas_minig.bin"}
     },
     "osd": [
     {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka,.rk8,.rkp", "dir": "/rk", "hotkey": "Menu+F2"},
     {"type": "FL", "name": "ROM disk", "slot": 2, "extensions": ".bin,.rom", "dir": "/rk", "hotkey": "Menu+F3"},
+    {"type": "F", "name": "SD card", "slot": 3, "extensions": ".img", "dir": "/rk", "hotkey": "Menu+F4"},
     {"type": "-"},
     {"type": "S", "name": "Model", "options": ["RK86", "Mikrosha", "Apogey", "Partner", "Mikro-80", "Mikro-80RK"], "default": 0, "hotkey": "Menu+M"},
     {"type": "S", "name": "CPU speed", "options": ["Normal", "Turbo"], "default": 0, "hotkey": "Menu+S"},

@@ -13,8 +13,8 @@
  pal is 0 (clk_pix = 40 MHz, the twin of clk_sys).
 
  Soft switches (the index of the item in the osd of core.json, file items included):
-   0 Tape file (FL 1)   1 ROM disk (FL 2)   2 -   3 Model (RK86 / Mikrosha / Apogey / Partner / Mikro-80 / Mikro-80RK)
-   4 CPU speed   5 Color   6 Autorun   7 Reset
+   0 Tape file (FL 1)   1 ROM disk (FL 2)   2 SD card (F 3, SDOS of the RK86)   3 -
+   4 Model (RK86 / Mikrosha / Apogey / Partner / Mikro-80 / Mikro-80RK)   5 CPU speed   6 Color   7 Autorun   8 Reset
  A change of the model resets the machine.
 */
 
@@ -372,18 +372,18 @@ assign SD_CLK = mcu_sck_ibufg;
 
 // ------------------------------------------------------------------ soft switches
 
-wire [8*8-1:0] sw;
-kg_soft_switches #(.N(8)) soft_switches (
+wire [9*8-1:0] sw;
+kg_soft_switches #(.N(9)) soft_switches (
 	.clk(clk_sys),
 	.command(softsw_command),
 	.regs(sw),
 	.upd()
 );
-wire [2:0] sw_model = sw[3*8 +: 3];
-wire sw_turbo = sw[4*8];
-wire sw_color = sw[5*8];
-wire sw_noauto = sw[6*8];
-wire sw_reset = sw[7*8];
+wire [2:0] sw_model = sw[4*8 +: 3];
+wire sw_turbo = sw[5*8];
+wire sw_color = sw[6*8];
+wire sw_noauto = sw[7*8];
+wire sw_reset = sw[8*8];
 assign pal = 1'b0;
 
 // a change of the model resets the machine
@@ -419,6 +419,17 @@ rk_system rk (
 	.file_addr(file_addr),
 	.file_data(file_data),
 	.file_wr(file_wr),
+	.img_mounted(img_mounted),
+	.img_size(img_size),
+	.img_data_wr(img_data_wr),
+	.img_data_addr(img_data_addr),
+	.img_data(img_data),
+	.img_result_wr(img_result_wr),
+	.img_result(img_result),
+	.img_sum(img_sum),
+	.img_q_wr(img_q_wr),
+	.img_q_di(img_q_di),
+	.img_q_ack(img_q_ack),
 	.kb_scancode(kb_scancode),
 	.kb_scancode_upd(kb_scancode_upd),
 	.joy(joy_l | joy_r),
