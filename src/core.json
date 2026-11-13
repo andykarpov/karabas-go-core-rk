@@ -26,8 +26,8 @@
     {"filename": "roms/sgp.bin", "address": 2039808}
     ],
     "boards": {
-        "go": {"bitstream": "karabas_go.bin"},
-        "mini": {"bitstream": "karabas_mini.bin"},
+        "go": {"link": 2, "build": "26111339", "bitstream": "karabas_go.bin"},
+        "mini": {"link": 2, "build": "26111339", "bitstream": "karabas_mini.bin"},
         "minig": {"link": 2, "build": "26111308", "bitstream": "karabas_minig.bin"}
     },
     "osd": [
