@@ -80,7 +80,11 @@
  same).
 */
 
-module rk_system (
+module rk_system #(
+	// the MCU link: 1 = v1 (kg_mcu: the img_* stream, img_sdc in here), 2 = v2 (kg_mcu2: its mounter has
+	// the sector interface of img_sdc, the sdc_* ports below; img_* unused)
+	parameter LINK = 1
+) (
 	input wire clk,
 	input wire reset,
 	input wire turbo,
@@ -111,6 +115,20 @@ module rk_system (
 	output wire img_q_wr,
 	output wire [23:0] img_q_di,
 	input wire img_q_ack,
+	// LINK 2: the sector interface of the mounter of kg_mcu2 (img_sdc names)
+	input wire [7:0] sdc_img_mounted_i,
+	input wire [63:0] sdc_img_size_i,
+	output wire [7:0] sdc_rd_o,
+	output wire [7:0] sdc_wr_o,
+	output wire [31:0] sdc_sector_o,
+	input wire sdc_busy_i,
+	input wire sdc_done_i,
+	input wire sdc_error_i,
+	input wire [2:0] sdc_slot_i,
+	input wire sdc_byte_in_strobe_i,
+	input wire [8:0] sdc_byte_addr_i,
+	input wire [7:0] sdc_byte_in_data_i,
+	output wire [7:0] sdc_byte_out_data_o,
 
 	// the keyboard (rk_kbd on the keyboard PPI at 8000)
 	input wire [7:0] kb_scancode,
@@ -706,6 +724,12 @@ wire [2:0] sdc_slot;
 wire [8:0] sdc_byte_addr;
 wire [7:0] sdc_in_data;
 
+wire [7:0] sdc_rd_v = { 4'd0, mmc_rd, 3'd0 };
+wire [7:0] sdc_wr_v = { 4'd0, mmc_wr, 3'd0 };
+wire [31:0] sdc_sector_v = mmc_lba;
+wire [7:0] sdc_byte_out_data_v = mmc_byte_out;
+
+generate if (LINK == 1) begin : link1
 // no reset: a reset of the machine during a request leaves img_sdc to finish it
 img_sdc #(
 	.OUT_LATENCY(3),
@@ -726,9 +750,9 @@ img_sdc #(
 	.img_q_ack(img_q_ack),
 	.sdc_img_mounted(sdc_img_mounted),
 	.sdc_img_size(sdc_img_size),
-	.sdc_rd({ 4'd0, mmc_rd, 3'd0 }),
-	.sdc_wr({ 4'd0, mmc_wr, 3'd0 }),
-	.sdc_sector(mmc_lba),
+	.sdc_rd(sdc_rd_v),
+	.sdc_wr(sdc_wr_v),
+	.sdc_sector(sdc_sector_v),
 	.sdc_busy(sdc_busy),
 	.sdc_done(sdc_done),
 	.sdc_error(),
@@ -736,9 +760,29 @@ img_sdc #(
 	.sdc_byte_in_strobe(sdc_in_strobe),
 	.sdc_byte_addr(sdc_byte_addr),
 	.sdc_byte_in_data(sdc_in_data),
-	.sdc_byte_out_data(mmc_byte_out),
+	.sdc_byte_out_data(sdc_byte_out_data_v),
 	.active()
 );
+	assign sdc_rd_o = 8'd0;
+	assign sdc_wr_o = 8'd0;
+	assign sdc_sector_o = 32'd0;
+	assign sdc_byte_out_data_o = 8'd0;
+end else begin : link2
+	assign sdc_img_mounted = sdc_img_mounted_i;
+	assign sdc_img_size = sdc_img_size_i;
+	assign sdc_busy = sdc_busy_i;
+	assign sdc_done = sdc_done_i;
+	assign sdc_slot = sdc_slot_i;
+	assign sdc_in_strobe = sdc_byte_in_strobe_i;
+	assign sdc_byte_addr = sdc_byte_addr_i;
+	assign sdc_in_data = sdc_byte_in_data_i;
+	assign sdc_rd_o = sdc_rd_v;
+	assign sdc_wr_o = sdc_wr_v;
+	assign sdc_sector_o = sdc_sector_v;
+	assign sdc_byte_out_data_o = sdc_byte_out_data_v;
+	assign img_q_wr = 1'b0;
+	assign img_q_di = 24'd0;
+end endgenerate
 
 rk_sd sd (
 	.clk(clk),
