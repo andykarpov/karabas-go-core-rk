@@ -28,7 +28,7 @@
     "boards": {
         "go": {"bitstream": "karabas_go.bin"},
         "mini": {"bitstream": "karabas_mini.bin"},
-        "minig": {"bitstream": "karabas_minig.bin"}
+        "minig": {"link": 2, "build": "26111308", "bitstream": "karabas_minig.bin"}
     },
     "osd": [
     {"type": "FL", "name": "Tape file", "slot": 1, "extensions": ".rk,.rkr,.gam,.rkm,.rka,.rk8,.rkp", "dir": "/rk", "hotkey": "Menu+F2"},
